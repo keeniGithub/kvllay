@@ -53,7 +53,6 @@ public:
         cleanup_network();
     }
 
-    // Non-copyable
     Server(const Server&) = delete;
     Server& operator=(const Server&) = delete;
 
@@ -175,7 +174,7 @@ private:
         while (running_) {
             int bytes_read = recv(client_socket, buffer, BUFFER_SIZE, 0);
             if (bytes_read <= 0) {
-                break; // Connection closed or error
+                break;
             }
 
             client_buffer.append(buffer, bytes_read);
@@ -198,9 +197,8 @@ private:
                         return;
                     }
                 } else if (status == ParseStatus::Incomplete) {
-                    // Wait for more data from socket
                     break;
-                } else { // ParseStatus::Error
+                } else {
                     std::string err = Resp::error("Protocol error");
                     send_all(client_socket, err);
                     CLOSE_SOCKET(client_socket);
@@ -227,6 +225,6 @@ private:
     }
 };
 
-} // namespace kvllay
+}
 
 #endif // KVLLAY_SERVER_HPP

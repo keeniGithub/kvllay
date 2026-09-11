@@ -30,17 +30,14 @@ public:
         std::string cmd = args[0];
         std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 
-        // QUIT is always allowed
         if (cmd == "QUIT") {
             return {Resp::simple_string("OK"), true};
         }
 
-        // AUTH command handling
         if (cmd == "AUTH") {
             return handle_auth(args, authenticated, server_password);
         }
 
-        // Check authentication requirement
         if (!server_password.empty() && !authenticated) {
             return {Resp::error("NOAUTH Authentication required."), false};
         }
@@ -67,6 +64,18 @@ public:
             return handle_command(args);
         } else if (cmd == "INFO") {
             return handle_info(args);
+        } else if (cmd == "EXPIRE") {
+            return handle_expire(args);
+        } else if (cmd == "PEXPIRE") {
+            return handle_pexpire(args);
+        } else if (cmd == "TTL") {
+            return handle_ttl(args);
+        } else if (cmd == "PTTL") {
+            return handle_pttl(args);
+        } else if (cmd == "PERSIST") {
+            return handle_persist(args);
+        } else if (cmd == "SETEX") {
+            return handle_setex(args);
         }
 
         return {Resp::error("unknown command '" + args[0] + "'"), false};
@@ -82,12 +91,10 @@ private:
         }
 
         if (server_password.empty()) {
-            // No password configured on server
             authenticated = true;
             return {Resp::simple_string("OK"), false};
         }
 
-        // AUTH [username] password
         std::string provided_password = (args.size() == 2) ? args[1] : args[2];
         if (provided_password == server_password) {
             authenticated = true;
@@ -152,12 +159,12 @@ private:
         return {Resp::array(matched), false};
     }
 
-    CommandResult handle_flushdb(const std::vector<std::string>& /*args*/) {
+    CommandResult handle_flushdb(const std::vector<std::string>&) {
         store_.flushdb();
         return {Resp::simple_string("OK"), false};
     }
 
-    CommandResult handle_dbsize(const std::vector<std::string>& /*args*/) {
+    CommandResult handle_dbsize(const std::vector<std::string>&) {
         return {Resp::integer(store_.size()), false};
     }
 
@@ -168,12 +175,11 @@ private:
         return {Resp::bulk_string(args[1]), false};
     }
 
-    CommandResult handle_command(const std::vector<std::string>& /*args*/) {
-        // Return empty array to satisfy redis-cli command discovery
+    CommandResult handle_command(const std::vector<std::string>&) {
         return {Resp::empty_array(), false};
     }
 
-    CommandResult handle_info(const std::vector<std::string>& /*args*/) {
+    CommandResult handle_info(const std::vector<std::string>&) {
         auto now = std::chrono::steady_clock::now();
         auto uptime = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
 
@@ -183,12 +189,89 @@ private:
         info += "kvllay_version:1.0.0\r\n";
         info += "uptime_in_seconds:" + std::to_string(uptime) + "\r\n";
         info += "# Keyspace\r\n";
-        info += "db0:keys=" + std::to_string(store_.size()) + ",expires=0\r\n";
+        info += "db0:keys=" + std::to_string(store_.size()) + ",expires=" + std::to_string(store_.expires_size()) + "\r\n";
 
         return {Resp::bulk_string(info), false};
     }
+
+    CommandResult handle_expire(const std::vector<std::string>& args) {
+        if (args.size() != 3) {
+            return {Resp::error("wrong number of arguments for 'expire' command"), false};
+        }
+        long long seconds = 0;
+        try {
+            seconds = std::stoll(args[2]);
+        } catch (...) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        if (seconds <= 0) {
+            int res = store_.expire(args[1], 0);
+            return {Resp::integer(res), false};
+        }
+        int res = store_.expire(args[1], static_cast<uint64_t>(seconds) * 1000);
+        return {Resp::integer(res), false};
+    }
+
+    CommandResult handle_pexpire(const std::vector<std::string>& args) {
+        if (args.size() != 3) {
+            return {Resp::error("wrong number of arguments for 'pexpire' command"), false};
+        }
+        long long ms = 0;
+        try {
+            ms = std::stoll(args[2]);
+        } catch (...) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        if (ms <= 0) {
+            int res = store_.expire(args[1], 0);
+            return {Resp::integer(res), false};
+        }
+        int res = store_.expire(args[1], static_cast<uint64_t>(ms));
+        return {Resp::integer(res), false};
+    }
+
+    CommandResult handle_ttl(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'ttl' command"), false};
+        }
+        long long rem = store_.ttl(args[1], false);
+        return {Resp::integer(rem), false};
+    }
+
+    CommandResult handle_pttl(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'pttl' command"), false};
+        }
+        long long rem = store_.ttl(args[1], true);
+        return {Resp::integer(rem), false};
+    }
+
+    CommandResult handle_persist(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'persist' command"), false};
+        }
+        int res = store_.persist(args[1]);
+        return {Resp::integer(res), false};
+    }
+
+    CommandResult handle_setex(const std::vector<std::string>& args) {
+        if (args.size() != 4) {
+            return {Resp::error("wrong number of arguments for 'setex' command"), false};
+        }
+        long long seconds = 0;
+        try {
+            seconds = std::stoll(args[2]);
+        } catch (...) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        if (seconds <= 0) {
+            return {Resp::error("invalid expire time in 'setex' command"), false};
+        }
+        store_.setex(args[1], static_cast<uint64_t>(seconds) * 1000, args[3]);
+        return {Resp::simple_string("OK"), false};
+    }
 };
 
-} // namespace kvllay
+}
 
 #endif // KVLLAY_COMMANDS_HPP

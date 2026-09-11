@@ -19,8 +19,6 @@ enum class ParseStatus {
 
 class Resp {
 public:
-    // --- RESP Serialization Helpers ---
-
     static std::string simple_string(const std::string& str) {
         return "+" + str + "\r\n";
     }
@@ -56,12 +54,6 @@ public:
         return res;
     }
 
-    // --- RESP & Inline Deserialization ---
-
-    // Parses a single command from buffer.
-    // If successful, returns ParseStatus::Success, fills args, and advances consumed_bytes.
-    // If buffer doesn't contain a full command yet, returns ParseStatus::Incomplete.
-    // If parsing fails due to syntax error, returns ParseStatus::Error.
     static ParseStatus parse_command(const std::string& buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
         args.clear();
         consumed_bytes = 0;
@@ -70,12 +62,10 @@ public:
             return ParseStatus::Incomplete;
         }
 
-        // RESP Array format (*<count>\r\n...)
         if (buffer[0] == '*') {
             return parse_resp_array(buffer, args, consumed_bytes);
         }
 
-        // Inline command format (e.g., "PING\r\n" or "SET a b\r\n")
         return parse_inline_command(buffer, args, consumed_bytes);
     }
 
@@ -96,7 +86,7 @@ private:
 
         if (count < 0) {
             consumed_bytes = pos + 2;
-            return ParseStatus::Success; // Null array
+            return ParseStatus::Success;
         }
 
         size_t current = pos + 2;
@@ -125,7 +115,6 @@ private:
             }
 
             if (str_len < 0) {
-                // Null bulk string inside array
                 args.emplace_back("");
                 current = crlf + 2;
                 continue;
@@ -164,10 +153,8 @@ private:
         std::string line = buffer.substr(0, line_end);
         consumed_bytes = line_end + delim_len;
 
-        // Split line into words supporting simple quotes
         size_t idx = 0;
         while (idx < line.size()) {
-            // Skip spaces
             while (idx < line.size() && std::isspace(static_cast<unsigned char>(line[idx]))) {
                 idx++;
             }
@@ -199,6 +186,6 @@ private:
     }
 };
 
-} // namespace kvllay
+}
 
 #endif // KVLLAY_RESP_HPP
