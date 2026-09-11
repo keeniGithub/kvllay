@@ -1,6 +1,16 @@
-# kvllay
+<div align="center">
+  <img src="logo.png" alt="kvllay logo" width="128" style="image-rendering: pixelated; image-rendering: crisp-edges;">
+  <h1>kvllay</h1>
+  <p>In-memory key-value store</p>
 
-A lightweight in-memory key-value server written in C++ with Redis protocol (RESP2) support. Compatible with standard `redis-cli` and official client SDK libraries for any programming language.
+  <p>
+    <a href="#">Release</a> •
+    <a href="#">Русская документация</a> •
+    <a href="#">English Documentation</a>
+  </p>
+</div>
+
+Compatible with standard `redis-cli` and official client SDK libraries for any programming language.
 
 ## Features
 - **RESP2 Protocol**: full support for Redis command formats (arrays, bulk strings, errors, integers, inline commands).
@@ -63,19 +73,4 @@ OK
 redis-cli -p 6379 -a "mypassword"
 127.0.0.1:6379> GET user
 "Alex"
-```
-
-## Performance (Benchmark)
-Run benchmark:
-```bash
-python3 benchmark.py 6379 [password]
-```
-
-Benchmark results on a modern machine:
-- **Single connection**: ~**80,000** req/sec (average latency **0.012 ms** / 12 microseconds).
-- **Concurrent clients (8 threads)**: ~**148,000** req/sec (p50 latency **0.04 ms**).
-
-## Testing
-```bash
-python3 test_kvllay.py 6379
 ```
