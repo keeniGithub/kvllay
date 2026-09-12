@@ -1,7 +1,7 @@
 /build/
 *.exe
 
-/__pycache__
-*.py
+/__pycache__/
+*.pyc
 
 tasks.md
