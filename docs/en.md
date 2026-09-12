@@ -2,6 +2,7 @@
 
 <div align="center">
   <img src="../logo.png" alt="kvllay logo" width="100">
+  <p><em>[pronounced: <strong>key-vi-lay</strong> · «кей-ви-лей» (key-value allay)]</em></p>
   <p><strong>High-performance, lightweight in-memory key-value database written in C++17 with Redis RESP2 protocol support.</strong></p>
   <p>
     <a href="ru.md">Русский</a> •
@@ -44,7 +45,7 @@
 
 ## 1. Overview & Philosophy
 
-**kvllay** is a minimalist, ultra-fast, and secure in-memory database built in modern C++17 with zero external dependencies. It is engineered as a lightweight alternative to Redis for scenarios demanding microsecond latency, session storage, or caching with minimal RAM consumption and near-instant cold-start times.
+**kvllay** (pronounced *key-vi-lay*, from *key-value allay*) is a minimalist, ultra-fast, and secure in-memory database built in modern C++17 with zero external dependencies. It is engineered as a lightweight alternative to Redis for scenarios demanding microsecond latency, session storage, or caching with minimal RAM consumption and near-instant cold-start times.
 
 ### Key Highlights
 - **Full Redis Ecosystem Compatibility**: Implements the standard RESP2 protocol and inline text commands. Seamlessly connects to any official Redis client SDK (Python, Go, Node.js, PHP, Java, Rust, etc.) as well as `redis-cli`.

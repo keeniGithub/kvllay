@@ -1,7 +1,7 @@
 # AGENTS.md - Technical Guide for kvllay
 
 ## Overview
-`kvllay` is a lightweight, in-memory key-value database written in C++17. It implements a subset of the Redis RESP2 protocol and supports raw inline text commands. It is compatible with `redis-cli` and Redis client libraries.
+`kvllay` (pronounced *key-vi-lay* / «кей-ви-лей», from *key-value allay*) is a lightweight, in-memory key-value database written in C++17. It implements a subset of the Redis RESP2 protocol and supports raw inline text commands. It is compatible with `redis-cli` and Redis client libraries.
 
 ---
 

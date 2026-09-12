@@ -1,6 +1,7 @@
 <div align="center">
   <img src="logo.png" alt="kvllay logo" width="128" style="image-rendering: pixelated; image-rendering: crisp-edges;">
   <h1>kvllay</h1>
+  <p><em>[pronounced: <strong>key-vi-lay</strong> · «кей-ви-лей» (key-value allay)]</em></p>
   <p>In-memory key-value store</p>
 
   <p>
