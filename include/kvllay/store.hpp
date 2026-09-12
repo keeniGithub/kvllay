@@ -14,6 +14,7 @@
 #include <thread>
 #include <atomic>
 #include <condition_variable>
+#include <constants.hpp>
 
 namespace kvllay {
 
@@ -289,7 +290,7 @@ public:
         return count;
     }
 
-    void evict_expired(size_t batch_limit = 100) {
+    void evict_expired(size_t batch_limit = constants::DEFAULT_EVICTION_BATCH_LIMIT) {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         if (keys_with_ttl_.empty()) {
             return;
@@ -319,7 +320,7 @@ public:
             while (active_eviction_running_) {
                 {
                     std::unique_lock<std::mutex> lk(eviction_cv_mutex_);
-                    eviction_cv_.wait_for(lk, std::chrono::milliseconds(100), [this]() {
+                    eviction_cv_.wait_for(lk, std::chrono::milliseconds(constants::DEFAULT_EVICTION_INTERVAL_MS), [this]() {
                         return !active_eviction_running_.load();
                     });
                 }

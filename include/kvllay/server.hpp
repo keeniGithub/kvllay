@@ -9,6 +9,7 @@
 #include <thread>
 #include <atomic>
 #include <cstring>
+#include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
 #include <commands.hpp>
@@ -42,7 +43,7 @@ namespace kvllay {
 
 class Server {
 public:
-    explicit Server(int port = 6379, std::string host = "0.0.0.0", std::string password = "")
+    explicit Server(int port = constants::DEFAULT_PORT, std::string host = constants::DEFAULT_HOST, std::string password = "")
         : port_(port), host_(std::move(host)), password_(std::move(password)),
           running_(false), server_socket_(INVALID_SOCKET), command_handler_(store_) {
         init_network();
@@ -166,7 +167,7 @@ private:
     }
 
     void handle_client(socket_t client_socket) {
-        constexpr size_t BUFFER_SIZE = 4096;
+        constexpr size_t BUFFER_SIZE = constants::CLIENT_BUFFER_SIZE;
         char buffer[BUFFER_SIZE];
         std::string client_buffer;
         bool authenticated = password_.empty();

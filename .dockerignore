@@ -1,0 +1,8 @@
+build/
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.o
+.gemini/
+*.log

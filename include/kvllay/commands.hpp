@@ -7,6 +7,7 @@
 #include <vector>
 #include <algorithm>
 #include <chrono>
+#include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
 
@@ -185,8 +186,8 @@ private:
 
         std::string info;
         info += "# Server\r\n";
-        info += "redis_version:kvllay-1.0.0\r\n";
-        info += "kvllay_version:1.0.0\r\n";
+        info += "redis_version:" + constants::REDIS_VERSION_STRING + "\r\n";
+        info += "kvllay_version:" + std::string(constants::VERSION) + "\r\n";
         info += "uptime_in_seconds:" + std::to_string(uptime) + "\r\n";
         info += "# Keyspace\r\n";
         info += "db0:keys=" + std::to_string(store_.size()) + ",expires=" + std::to_string(store_.expires_size()) + "\r\n";

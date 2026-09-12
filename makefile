@@ -40,3 +40,15 @@ run:
 
 clean:
 	$(REMOVE)
+
+docker-build:
+	docker build -t kvllay:latest .
+
+docker-run:
+	docker run -d --name kvllay -p 6379:6379 kvllay:latest
+
+docker-compose-up:
+	docker compose up -d
+
+docker-compose-down:
+	docker compose down

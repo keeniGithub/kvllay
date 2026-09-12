@@ -11,14 +11,20 @@
 ├── include/
 │   └── kvllay/
 │       ├── kvllay.hpp      # Umbrella header including all module headers
+│       ├── constants.hpp   # Centralized version, network, store, and protocol constants
 │       ├── resp.hpp        # RESP2 serialization and streaming command parser
-│       ├── store.hpp       # In-memory key-value storage engine (thread-safe)
+│       ├── store.hpp       # In-memory key-value storage engine (thread-safe, TTL, GC)
 │       ├── commands.hpp    # Command dispatcher and individual command handlers
 │       └── server.hpp      # Cross-platform TCP socket server (POSIX / Winsock)
 ├── src/
 │   └── main.cpp            # Entry point, CLI argument parsing, server bootstrap
+├── docs/
+│   ├── ru.md               # Comprehensive Russian documentation and Redis benchmarks
+│   └── en.md               # Comprehensive English documentation and Redis benchmarks
+├── Dockerfile              # Multi-stage scratch build for ultra-minimal (< 2 MB) container
+├── docker-compose.yml      # Local container orchestration
 ├── build/                  # Build artifact directory (ignored by git)
-├── makefile                # Platform-detecting Makefile (Linux & Windows)
+├── makefile                # Platform-detecting Makefile (Linux, Windows, Docker)
 ├── tasks.md                # Feature backlog and development roadmap
 ├── README.md               # User-facing project documentation
 └── CLAUDE.md               # Agent reference pointer (@AGENTS.md)

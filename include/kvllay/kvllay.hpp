@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
 #include <commands.hpp>

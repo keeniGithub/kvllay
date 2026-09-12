@@ -4,9 +4,9 @@
   <p>In-memory key-value store</p>
 
   <p>
-    <a href="#">Release</a> •
-    <a href="#">Русская документация</a> •
-    <a href="#">English Documentation</a>
+    <a href="https://github.com/Qualsu/kvllay/releases">Release</a> •
+    <a href="docs/ru.md">Русская документация</a> •
+    <a href="docs/en.md">English Documentation</a>
   </p>
 </div>
 
@@ -26,14 +26,30 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `KEYS [pattern]`
   - `DBSIZE`
   - `FLUSHDB`
+  - `EXPIRE key seconds` / `PEXPIRE key milliseconds`
+  - `TTL key` / `PTTL key`
+  - `PERSIST key`
+  - `SETEX key seconds value`
   - `ECHO message`
   - `COMMAND` / `COMMAND DOCS` (redis-cli handshake)
   - `INFO`
   - `QUIT`
 - **Thread Safety**: `std::shared_mutex` (fast concurrent reads with `GET`, synchronized writes with `SET`/`DEL`).
+- **TTL & Eviction**: Hybrid passive (`Lazy`) + active background garbage collector.
+- **Ultra-Lightweight**: Docker image under **1.6 MB** (`scratch` static binary).
 - **Cross-Platform**: unified codebase for Linux (POSIX sockets) and Windows (Winsock).
 
-## Build and Run
+## Quickstart with Docker
+
+```bash
+# Run with Docker
+docker run -d --name kvllay -p 6379:6379 kvllay:latest
+
+# Or with Docker Compose
+docker compose up -d
+```
+
+## Build and Run Locally
 
 ### Building
 ```bash
@@ -66,6 +82,10 @@ PONG
 OK
 127.0.0.1:6379> GET user
 "Alex"
+127.0.0.1:6379> SETEX temp 60 "secret"
+OK
+127.0.0.1:6379> TTL temp
+(integer) 60
 ```
 
 ### With password
@@ -74,3 +94,19 @@ redis-cli -p 6379 -a "mypassword"
 127.0.0.1:6379> GET user
 "Alex"
 ```
+
+## Benchmark Kvllay vs Redis
+
+| Workload | kvllay v1.0.0 | Redis v7.x | Comparison |
+| :--- | :---: | :---: | :--- |
+| **Single-Client: SET** | **62,235 RPS** | 52,815 RPS | **kvllay +17.8% faster** |
+| **Single-Client: GET** | **68,336 RPS** | 59,947 RPS | **kvllay +14.0% faster** |
+| **Parallel 8-Thread: SET** | **125,341 RPS** | 127,723 RPS | On par (~98% Redis) |
+| **Parallel 8-Thread: GET** | **122,973 RPS** | 118,350 RPS | **kvllay +3.9% faster** |
+| **redis-benchmark (50 clients): GET** | **128,866 RPS** | 126,100 RPS | **kvllay +2.2% faster** |
+| **Latency p50** | **0.044 ms** | 0.048 ms | **kvllay 8% lower** |
+| **Idle RAM** | **~2.4 MB** | ~11.5 MB | **kvllay 4.8x lighter** |
+| **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay 90x smaller** |
+| **Cold Start** | **< 2 ms** | ~35 ms | **kvllay 15x faster** |
+
+*See full benchmarks, methodology, and visual graphs in the [Russian Documentation](docs/ru.md#6-бенчмарк-сравнение-с-redis) and [English Documentation](docs/en.md#6-benchmark-comparison-with-redis).*

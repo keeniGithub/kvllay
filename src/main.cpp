@@ -3,13 +3,19 @@
 #include <string>
 #include <vector>
 
+void print_version() {
+    std::cout << kvllay::constants::SERVER_NAME << " version " << kvllay::constants::VERSION << "\n";
+}
+
 void print_help(const char* prog) {
-    std::cout << "kvllay - In-memory key-value store (Redis RESP compatible)\n\n"
+    std::cout << kvllay::constants::SERVER_NAME << " v" << kvllay::constants::VERSION
+              << " - In-memory key-value store (Redis RESP compatible)\n\n"
               << "Usage: " << prog << " [options] [port] [host]\n\n"
               << "Options:\n"
-              << "  -p, --port <port>          Port to listen on (default: 6379)\n"
-              << "  -h, --bind, --host <host>  Host address to bind (default: 0.0.0.0)\n"
+              << "  -p, --port <port>          Port to listen on (default: " << kvllay::constants::DEFAULT_PORT << ")\n"
+              << "  -h, --bind, --host <host>  Host address to bind (default: " << kvllay::constants::DEFAULT_HOST << ")\n"
               << "  -a, --requirepass <pass>   Require password authentication\n"
+              << "  -v, --version              Display version information\n"
               << "  --help                     Display this help message\n\n"
               << "Examples:\n"
               << "  " << prog << " -p 6379\n"
@@ -18,8 +24,8 @@ void print_help(const char* prog) {
 }
 
 int main(int argc, char* argv[]) {
-    int port = 6379;
-    std::string host = "0.0.0.0";
+    int port = kvllay::constants::DEFAULT_PORT;
+    std::string host = kvllay::constants::DEFAULT_HOST;
     std::string password = "";
 
     std::vector<std::string> positional;
@@ -29,6 +35,9 @@ int main(int argc, char* argv[]) {
 
         if (arg == "--help") {
             print_help(argv[0]);
+            return 0;
+        } else if (arg == "-v" || arg == "--version") {
+            print_version();
             return 0;
         } else if ((arg == "-p" || arg == "--port") && i + 1 < argc) {
             port = std::stoi(argv[++i]);

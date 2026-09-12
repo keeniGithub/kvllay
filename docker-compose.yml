@@ -1,0 +1,13 @@
+services:
+  kvllay:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kvllay:latest
+    container_name: kvllay
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+    command: ["-p", "6379", "-h", "0.0.0.0"]
+    # For password protection, uncomment the following line:
+    # command: ["-p", "6379", "-h", "0.0.0.0", "-a", "your_secret_password"]
