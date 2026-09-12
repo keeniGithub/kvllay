@@ -59,10 +59,10 @@ clean:
 	$(REMOVE)
 
 docker-build:
-	docker build -t kvllay:latest .
+	docker build -t kenyka/kvllay:latest .
 
 docker-run:
-	docker run -d --name kvllay -p 6379:6379 kvllay:latest
+	docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest
 
 docker-compose-up:
 	docker compose up -d

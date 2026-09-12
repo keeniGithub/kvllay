@@ -201,20 +201,26 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
 
 kvllay оптимизирован для работы в Docker контейнерах. Многоэтапная сборка компилирует полностью статический бинарник и помещает его в образ `scratch`, что дает размер всего **~1.5 МБ**.
 
-#### Сборка и запуск через Docker:
+#### Быстрый запуск готового образа из Docker Hub (без клонирования):
+```bash
+# Запустить официальный образ напрямую
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest
+
+# Запуск с паролем
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest -a "supersecret"
+```
+
+#### Сборка и запуск локально:
 ```bash
 # Собрать образ
-docker build -t kvllay:latest .
+docker build -t kenyka/kvllay:latest .
 # или через make:
 make docker-build
 
-# Запустить контейнер в фоне
-docker run -d --name kvllay -p 6379:6379 kvllay:latest
+# Запустить локальный контейнер
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest
 # или через make:
 make docker-run
-
-# Запуск с паролем
-docker run -d --name kvllay -p 6379:6379 kvllay:latest -a "supersecret"
 ```
 
 #### Запуск через Docker Compose:

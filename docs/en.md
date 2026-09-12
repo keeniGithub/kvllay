@@ -201,20 +201,26 @@ Examples:
 
 kvllay is container-native. The multi-stage Docker build compiles a fully static musl binary placed inside a `scratch` container, producing an ultra-small image under **1.6 MB**.
 
-#### Docker CLI:
+#### Quickstart with Docker Hub (no cloning required):
+```bash
+# Run the official pre-built image directly
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest
+
+# Run with authentication
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest -a "supersecret"
+```
+
+#### Build and Run Locally:
 ```bash
 # Build Docker image
-docker build -t kvllay:latest .
+docker build -t kenyka/kvllay:latest .
 # or using make:
 make docker-build
 
-# Run container in background
-docker run -d --name kvllay -p 6379:6379 kvllay:latest
+# Run local container
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest
 # or using make:
 make docker-run
-
-# Run with authentication
-docker run -d --name kvllay -p 6379:6379 kvllay:latest -a "supersecret"
 ```
 
 #### Docker Compose:

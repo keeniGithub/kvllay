@@ -5,7 +5,7 @@
   <p>In-memory key-value store</p>
 
   <p>
-    <a href="https://github.com/Qualsu/kvllay/releases">Release</a> •
+    <a href="https://github.com/keeniGithub/kvllay/releases">Release</a> •
     <a href="docs/ru.md">Русская документация</a> •
     <a href="docs/en.md">English Documentation</a>
   </p>
@@ -42,15 +42,15 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
 
 ## Download Standalone Binary
 
-You can download ready-to-run standalone binaries from [Releases](https://github.com/Qualsu/kvllay/releases) (no dependencies required):
+You can download ready-to-run standalone binaries from [Releases](https://github.com/keeniGithub/kvllay/releases) (no dependencies required):
 - **Linux (x86_64)**: `chmod +x kvllay-linux-x86_64 && ./kvllay-linux-x86_64`
 - **Windows (x86_64)**: `.\kvllay-windows-x86_64.exe`
 
 ## Quickstart with Docker
 
 ```bash
-# Run with Docker
-docker run -d --name kvllay -p 6379:6379 kvllay:latest
+# Run pre-built image directly from Docker Hub (no cloning required!)
+docker run -d --name kvllay -p 6379:6379 kenyka/kvllay:latest
 
 # Or with Docker Compose
 docker compose up -d
