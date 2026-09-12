@@ -21,9 +21,10 @@
    - [3.3 TTL & Expiration Management](#33-ttl--expiration-management)
    - [3.4 Database Administration & Diagnostics](#34-database-administration--diagnostics)
 4. [Building & Running](#4-building--running)
-   - [4.1 Local Compilation](#41-local-compilation)
-   - [4.2 Command-Line Options](#42-command-line-options)
-   - [4.3 Running with Docker and Docker Compose](#43-running-with-docker-and-docker-compose)
+   - [4.1 Prebuilt Binaries (GitHub Releases)](#41-prebuilt-binaries-github-releases)
+   - [4.2 Local Compilation](#42-local-compilation)
+   - [4.3 Command-Line Options](#43-command-line-options)
+   - [4.4 Running with Docker and Docker Compose](#44-running-with-docker-and-docker-compose)
 5. [Client Integration](#5-client-integration)
    - [5.1 redis-cli](#51-redis-cli)
    - [5.2 Python (redis-py)](#52-python-redis-py)
@@ -131,7 +132,22 @@ All commands are case-insensitive (`get`, `Get`, and `GET` are equivalent).
 
 ## 4. Building & Running
 
-### 4.1 Local Compilation
+### 4.1 Prebuilt Binaries (GitHub Releases)
+
+Precompiled, fully static standalone binaries with zero dependencies are available on the repository's **Releases** page:
+- **Linux**: `kvllay-linux-x86_64` (static musl build, runs on any Linux distribution: Ubuntu, Debian, CentOS, Alpine, Arch, etc.).
+- **Windows**: `kvllay-windows-x86_64.exe` (standalone `.exe` with embedded C++ runtimes, runs without MinGW or extra DLLs).
+
+```bash
+# Run on Linux:
+chmod +x kvllay-linux-x86_64
+./kvllay-linux-x86_64 -p 6379
+
+# Run on Windows (PowerShell / CMD):
+.\kvllay-windows-x86_64.exe -p 6379
+```
+
+### 4.2 Local Compilation
 
 Requirements: C++17 compatible compiler (`g++`, `clang++`, or MSVC):
 
@@ -155,7 +171,7 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay src/main
 g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN32_WINNT=0x0A00 src/main.cpp -o build/kvllay.exe -lws2_32
 ```
 
-### 4.2 Command-Line Options
+### 4.3 Command-Line Options
 
 ```text
 Usage: kvllay [options] [port] [host]
@@ -180,7 +196,7 @@ Examples:
 ./build/kvllay 6379 0.0.0.0 mypass
 ```
 
-### 4.3 Running with Docker and Docker Compose
+### 4.4 Running with Docker and Docker Compose
 
 kvllay is container-native. The multi-stage Docker build compiles a fully static musl binary placed inside a `scratch` container, producing an ultra-small image under **1.6 MB**.
 

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  test-linux:
+    name: Test on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Compile kvllay
+        run: |
+          mkdir -p build
+          g++ src/main.cpp -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -o build/kvllay -pthread
+
+      - name: Run test suite
+        run: |
+          ./build/kvllay -p 6389 &
+          SERVER_PID=$!
+          sleep 1
+          python3 test_kvllay.py 6389
+          kill $SERVER_PID
+
+  test-windows:
+    name: Test on Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Compile kvllay (MinGW)
+        shell: pwsh
+        run: |
+          if (!(Test-Path -Path "build")) { New-Item -ItemType Directory -Path "build" }
+          g++ src/main.cpp -std=c++17 -Wall -Wextra -O2 -static -static-libgcc -static-libstdc++ -s -D _WIN32_WINNT=0x0A00 -I header -I include -I include/kvllay -o build/kvllay.exe -lws2_32
+
+      - name: Run test suite
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath ".\build\kvllay.exe" -ArgumentList "-p 6389" -PassThru
+          Start-Sleep -Seconds 1
+          try {
+            python test_kvllay.py 6389
+          } finally {
+            Stop-Process -Id $process.Id -Force
+          }

@@ -39,6 +39,12 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
 - **Ultra-Lightweight**: Docker image under **1.6 MB** (`scratch` static binary).
 - **Cross-Platform**: unified codebase for Linux (POSIX sockets) and Windows (Winsock).
 
+## Download Standalone Binary
+
+You can download ready-to-run standalone binaries from [Releases](https://github.com/Qualsu/kvllay/releases) (no dependencies required):
+- **Linux (x86_64)**: `chmod +x kvllay-linux-x86_64 && ./kvllay-linux-x86_64`
+- **Windows (x86_64)**: `.\kvllay-windows-x86_64.exe`
+
 ## Quickstart with Docker
 
 ```bash

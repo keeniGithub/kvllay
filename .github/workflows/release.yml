@@ -1,0 +1,95 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    name: Build Linux Static Binary
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.20
+    steps:
+      - name: Install build tools
+        run: apk add --no-cache g++ make git
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compile static Linux binary
+        run: |
+          mkdir -p dist
+          g++ src/main.cpp -std=c++17 -Wall -Wextra -O2 -static -s \
+            -I header -I include -I include/kvllay \
+            -o dist/kvllay-linux-x86_64 -pthread
+          chmod +x dist/kvllay-linux-x86_64
+
+      - name: Upload Linux artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kvllay-linux-x86_64
+          path: dist/kvllay-linux-x86_64
+
+  build-windows:
+    name: Build Windows Static Binary
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compile static Windows binary
+        shell: pwsh
+        run: |
+          if (!(Test-Path -Path "dist")) { New-Item -ItemType Directory -Path "dist" }
+          g++ src/main.cpp -std=c++17 -Wall -Wextra -O2 -static -static-libgcc -static-libstdc++ -s -D _WIN32_WINNT=0x0A00 -I header -I include -I include/kvllay -o dist/kvllay-windows-x86_64.exe -lws2_32
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kvllay-windows-x86_64
+          path: dist/kvllay-windows-x86_64.exe
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-linux, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kvllay-linux-x86_64
+          path: release_assets
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: kvllay-windows-x86_64
+          path: release_assets
+
+      - name: Compute Checksums
+        working-directory: release_assets
+        run: |
+          sha256sum kvllay-linux-x86_64 kvllay-windows-x86_64.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          name: ${{ github.event.inputs.tag_name || github.ref_name }}
+          generate_release_notes: true
+          files: |
+            release_assets/kvllay-linux-x86_64
+            release_assets/kvllay-windows-x86_64.exe
+            release_assets/SHA256SUMS.txt

@@ -35,8 +35,19 @@ compile:
 	$(REMOVE)
 	${COMPILE}
 
+static-linux:
+	$(MKDIR)
+	$(CXX) $(SRC) -std=c++17 -Wall -Wextra -O2 -static -s -I header -I include -I include/kvllay -o $(BUILD_DIR)/kvllay-linux-x86_64 -pthread
+
+static-windows:
+	$(MKDIR)
+	$(CXX) $(SRC) -std=c++17 -Wall -Wextra -O2 -static -static-libgcc -static-libstdc++ -s -D _WIN32_WINNT=0x0A00 -I header -I include -I include/kvllay -o $(BUILD_DIR)/kvllay-windows-x86_64.exe -lws2_32
+
 run:
 	${RUN}
+
+test:
+	python3 test_kvllay.py 6389
 
 clean:
 	$(REMOVE)
@@ -52,3 +63,4 @@ docker-compose-up:
 
 docker-compose-down:
 	docker compose down
+
