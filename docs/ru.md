@@ -325,62 +325,22 @@ echo -e "SET greeting hello\r\nGET greeting\r\n" | nc 127.0.0.1 6379
 ### 6.3 Визуальные графики производительности
 
 #### Пропускная способность: Одиночное соединение (Single-Client RPS)
-```mermaid
-xychart-beta
-    title "Пропускная способность: Одиночное соединение (RPS)"
-    x-axis ["SET", "GET"]
-    y-axis "Запросов в секунду" 0 --> 80000
-    bar [62235, 68336]
-    bar [52815, 59947]
-```
-*(Синий: kvllay | Оранжевый: Redis)*
+![Throughput: Single-Client RPS](images/benchmark_single_client.png)
 
 #### Пропускная способность: Многопоточная нагрузка (Multi-Threaded RPS)
-```mermaid
-xychart-beta
-    title "Пропускная способность: Многопоточная нагрузка (RPS)"
-    x-axis ["SET (8 потоков)", "GET (8 потоков)", "GET (50 клиентов)"]
-    y-axis "Запросов в секунду (RPS)" 0 --> 140000
-    bar [125341, 122973, 128866]
-    bar [127723, 118350, 126100]
-```
-*(Синий: kvllay | Оранжевый: Redis)*
+![Throughput: Multi-Threaded RPS](images/benchmark_multithreaded.png)
 
 ### 6.4 Задержки (Latency p50 / p99)
 
 Низкие задержки достигаются благодаря отключению алгоритма Nagle (`TCP_NODELAY`), прямому парсингу в буфере и отсутствию очередей фоновых событий (event loops) на одиночных запросах:
 
-```mermaid
-xychart-beta
-    title "Задержка при параллельной нагрузке в микросекундах (μs, меньше — лучше)"
-    x-axis ["p50 (Медиана)", "p99 (99-й перцентиль)"]
-    y-axis "Задержка (мкс / μs)" 0 --> 280
-    bar [44, 239]
-    bar [48, 231]
-```
-*(Синий: kvllay | Оранжевый: Redis)*
+![Latency: p50 & p99](images/benchmark_latency.png)
 
 ### 6.5 Потребление памяти и размер образа
 
-```mermaid
-xychart-beta
-    title "Потребление памяти RAM в простое (МБ, меньше — лучше)"
-    x-axis ["RAM в простое"]
-    y-axis "Оперативная память (МБ)" 0 --> 15
-    bar [2.4]
-    bar [11.5]
-```
-*(Синий: kvllay | Оранжевый: Redis)*
+![Idle RAM Usage](images/benchmark_ram.png)
 
-```mermaid
-xychart-beta
-    title "Размер Docker-образа (МБ, меньше — лучше)"
-    x-axis ["Размер образа"]
-    y-axis "Размер на диске (МБ)" 0 --> 160
-    bar [1.6]
-    bar [140]
-```
-*(Синий: kvllay | Оранжевый: Redis)*
+![Docker Image Size](images/benchmark_docker.png)
 
 ### 6.6 Анализ архитектурных преимуществ
 

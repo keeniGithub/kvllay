@@ -109,4 +109,8 @@ redis-cli -p 6379 -a "mypassword"
 | **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay 90x smaller** |
 | **Cold Start** | **< 2 ms** | ~35 ms | **kvllay 15x faster** |
 
+![Throughput: Single-Client RPS](docs/images/benchmark_single_client.png)
+
+![Throughput: Multi-Threaded RPS](docs/images/benchmark_multithreaded.png)
+
 *See full benchmarks, methodology, and visual graphs in the [Russian Documentation](docs/ru.md#6-бенчмарк-сравнение-с-redis) and [English Documentation](docs/en.md#6-benchmark-comparison-with-redis).*

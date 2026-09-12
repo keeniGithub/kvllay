@@ -325,62 +325,22 @@ All tests were conducted on identical hardware under identical isolation conditi
 ### 6.3 Visual Throughput Charts
 
 #### Single-Client Throughput (RPS):
-```mermaid
-xychart-beta
-    title "Single-Client Throughput (Requests per Second)"
-    x-axis ["SET", "GET"]
-    y-axis "Requests per Second (RPS)" 0 --> 80000
-    bar [62235, 68336]
-    bar [52815, 59947]
-```
-*(Blue: kvllay | Orange: Redis)*
+![Throughput: Single-Client RPS](images/benchmark_single_client.png)
 
 #### Parallel Multi-Threaded Throughput:
-```mermaid
-xychart-beta
-    title "Parallel Multi-Threaded Throughput (RPS)"
-    x-axis ["SET (8 Threads)", "GET (8 Threads)", "GET (50 Clients)"]
-    y-axis "Requests per Second (RPS)" 0 --> 140000
-    bar [125341, 122973, 128866]
-    bar [127723, 118350, 126100]
-```
-*(Blue: kvllay | Orange: Redis)*
+![Throughput: Multi-Threaded RPS](images/benchmark_multithreaded.png)
 
 ### 6.4 Latency Profile (p50 / p99)
 
 Ultra-low latencies stem from immediate socket buffer parsing, `TCP_NODELAY` socket configurations, and absence of heavy event loop cascades on direct queries:
 
-```mermaid
-xychart-beta
-    title "Parallel Workload Latency in Microseconds (μs, lower is better)"
-    x-axis ["p50 (Median)", "p99 (99th percentile)"]
-    y-axis "Latency (μs)" 0 --> 280
-    bar [44, 239]
-    bar [48, 231]
-```
-*(Blue: kvllay | Orange: Redis)*
+![Latency: p50 & p99](images/benchmark_latency.png)
 
 ### 6.5 Memory Footprint & Image Size
 
-```mermaid
-xychart-beta
-    title "Idle RAM Usage (MB, lower is better)"
-    x-axis ["Idle RAM"]
-    y-axis "RAM Consumption (MB)" 0 --> 15
-    bar [2.4]
-    bar [11.5]
-```
-*(Blue: kvllay | Orange: Redis)*
+![Idle RAM Usage](images/benchmark_ram.png)
 
-```mermaid
-xychart-beta
-    title "Docker Image Size (MB, lower is better)"
-    x-axis ["Image Size"]
-    y-axis "Image Size (MB)" 0 --> 160
-    bar [1.6]
-    bar [140]
-```
-*(Blue: kvllay | Orange: Redis)*
+![Docker Image Size](images/benchmark_docker.png)
 
 ### 6.6 Architectural Analysis & Advantages
 
