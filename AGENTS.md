@@ -17,7 +17,11 @@
 │       ├── commands.hpp    # Command dispatcher and individual command handlers
 │       └── server.hpp      # Cross-platform TCP socket server (POSIX / Winsock)
 ├── src/
-│   └── main.cpp            # Entry point, CLI argument parsing, server bootstrap
+│   ├── main.cpp            # Entry point, CLI argument parsing, server bootstrap
+│   └── resources.rc        # Windows PE resource script with application icon
+├── logo.ico                # Multi-resolution icon for Windows executable
+├── logo.png                # High-resolution (256x256) logo
+├── logo-16x16.png         # Pixel-art (16x16) source logo
 ├── docs/
 │   ├── ru.md               # Comprehensive Russian documentation and Redis benchmarks
 │   └── en.md               # Comprehensive English documentation and Redis benchmarks
@@ -133,7 +137,8 @@
 g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay src/main.cpp -o build/kvllay -pthread
 
 # Windows (MinGW)
-g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN32_WINNT=0x0A00 src/main.cpp -o build/kvllay.exe -lws2_32
+windres -I . src/resources.rc -O coff -o build/resources.o
+g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN32_WINNT=0x0A00 src/main.cpp build/resources.o -o build/kvllay.exe -lws2_32
 ```
 
 ---
