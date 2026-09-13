@@ -39,8 +39,7 @@ website/
 │   │       └── Reveal.tsx      # Scroll reveal wrapper with directions, delays, and GPU transitions
 │   ├── config/
 │   │   ├── links.ts            # Centralized external links and repository URLs
-│   │   ├── paths.ts            # Centralized internal paths, section IDs, and public asset URLs
-│   │   └── route.ts            # Route configuration re-exporting paths
+│   │   └── paths.ts            # Centralized internal paths, section IDs, and public asset URLs
 │   ├── lib/
 │   │   ├── useGithubStars.ts   # Hook for GitHub API star fetching, caching, and skeleton state
 │   │   └── useScrollReveal.ts  # IntersectionObserver hook with reduced-motion support for scroll animations
