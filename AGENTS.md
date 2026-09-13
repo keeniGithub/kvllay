@@ -105,6 +105,14 @@
   - `DECRBY key decrement`: Atomically decrements integer value by given delta.
   - `MGET key [key ...]`: Atomically retrieves multiple keys in a single roundtrip, returning array of bulk strings or nulls (`$-1`).
   - `MSET key value [key value ...]`: Atomically sets multiple key-value pairs in a single operation, clearing any existing TTLs.
+  - `LPUSH key value [value ...]`: Prepends one or multiple values to the head of a list, returns length.
+  - `RPUSH key value [value ...]`: Appends one or multiple values to the tail of a list, returns length.
+  - `LPOP key [count]`: Removes and returns the first element(s) of a list. Auto-deletes key when empty.
+  - `RPOP key [count]`: Removes and returns the last element(s) of a list. Auto-deletes key when empty.
+  - `LLEN key`: Returns length of the list, or 0 if nonexistent.
+  - `LRANGE key start stop`: Returns elements from start to stop (supports negative indexes).
+  - `LINDEX key index`: Returns element by 0-based or negative index.
+  - `TYPE key`: Returns type of key (`string`, `list`, or `none`).
   - `SAVE`: Synchronously dumps memory state to binary snapshot file (`dump.kvl`).
   - `BGSAVE`: Asynchronously dumps memory state to snapshot in a background thread without `fork()`.
   - `LASTSAVE`: Returns UNIX epoch timestamp of the most recent successful snapshot save.
@@ -116,8 +124,8 @@
   - Redis relies on Linux `fork()`, which causes page-table copying latency spikes (up to hundreds of milliseconds) and Copy-On-Write memory explosion (up to 2x RAM usage under write traffic, risking OOM kills). Redis snapshots are also not natively supported on Windows.
   - `kvllay` creates point-in-time snapshots in a background thread using a brief `std::shared_lock` read-lock (readers are never blocked, writes are paused for microseconds to extract references). Zero kernel COW page table bloat, zero memory doubling, and fully cross-platform (Linux & Windows).
 - **Format**:
-  - Header: `"KVLLAYS1"` (8 bytes) + timestamp (8 bytes) + record count (8 bytes).
-  - Records: `key_len` (4B) + `key` + `val_len` (4B) + `val` + `expire_at_epoch_ms` (8B).
+  - Header: `"KVLLAYS2"` (or legacy `"KVLLAYS1"`) (8 bytes) + timestamp (8 bytes) + record count (8 bytes).
+  - Records (V2): `type` (1B: 0 for String, 1 for List) + `key_len` (4B) + `key` + [if String: `val_len` (4B) + `val`; if List: `count` (4B) + for each elem: `elem_len` (4B) + `elem`] + `expire_at_epoch_ms` (8B).
   - Footer: 32-bit CRC32 checksum verifying data integrity.
 - **Atomic File Swapping**: Writes to `<file>.tmp.<pid>_<ts>`, flushes & fsyncs, then executes atomic `rename()` / `MoveFileExA`.
 

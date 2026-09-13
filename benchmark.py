@@ -35,6 +35,24 @@ def benchmark_single(port=6379, password=None, iterations=10000):
     get_rps = iterations / elapsed
     print(f"  GET: {get_rps:,.0f} req/sec (avg latency: {elapsed / iterations * 1000:.3f} ms)")
 
+    # LPUSH benchmark
+    lpush_payload = b"*3\r\n$5\r\nLPUSH\r\n$7\r\nlistkey\r\n$5\r\nitem1\r\n"
+    start = time.perf_counter()
+    for _ in range(iterations):
+        send_command(s, lpush_payload)
+    elapsed = time.perf_counter() - start
+    lpush_rps = iterations / elapsed
+    print(f"  LPUSH: {lpush_rps:,.0f} req/sec (avg latency: {elapsed / iterations * 1000:.3f} ms)")
+
+    # LPOP benchmark
+    lpop_payload = b"*2\r\n$4\r\nLPOP\r\n$7\r\nlistkey\r\n"
+    start = time.perf_counter()
+    for _ in range(iterations):
+        send_command(s, lpop_payload)
+    elapsed = time.perf_counter() - start
+    lpop_rps = iterations / elapsed
+    print(f"  LPOP: {lpop_rps:,.0f} req/sec (avg latency: {elapsed / iterations * 1000:.3f} ms)")
+
     s.close()
 
 def benchmark_concurrent(port=6379, password=None, num_threads=10, ops_per_thread=2000):

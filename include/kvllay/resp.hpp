@@ -58,6 +58,11 @@ public:
         return s;
     }
 
+    static const std::string& null_array() {
+        static const std::string s = "*-1\r\n";
+        return s;
+    }
+
     static const std::string& empty_array() {
         static const std::string s = "*0\r\n";
         return s;

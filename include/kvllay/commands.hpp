@@ -127,6 +127,26 @@ public:
             result = handle_lastsave(args);
         } else if (iequals(cmd, "BGREWRITEAOF")) {
             result = handle_bgrewriteaof(args);
+        } else if (iequals(cmd, "LPUSH")) {
+            is_mutating = true;
+            result = handle_lpush(args);
+        } else if (iequals(cmd, "RPUSH")) {
+            is_mutating = true;
+            result = handle_rpush(args);
+        } else if (iequals(cmd, "LPOP")) {
+            is_mutating = true;
+            result = handle_lpop(args);
+        } else if (iequals(cmd, "RPOP")) {
+            is_mutating = true;
+            result = handle_rpop(args);
+        } else if (iequals(cmd, "LLEN")) {
+            result = handle_llen(args);
+        } else if (iequals(cmd, "LRANGE")) {
+            result = handle_lrange(args);
+        } else if (iequals(cmd, "LINDEX")) {
+            result = handle_lindex(args);
+        } else if (iequals(cmd, "TYPE")) {
+            result = handle_type(args);
         } else {
             return {Resp::error("unknown command '" + std::string(cmd) + "'"), false};
         }
@@ -186,11 +206,14 @@ private:
         if (args.size() != 2) {
             return {Resp::error("wrong number of arguments for 'get' command"), false};
         }
-        auto val = store_.get(args[1]);
-        if (val.has_value()) {
-            return {Resp::bulk_string(*val), false};
+        auto res = store_.get(args[1]);
+        if (res.status == Store::GetStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
         }
-        return {Resp::null_bulk_string(), false};
+        if (res.status == Store::GetStatus::NotFound) {
+            return {Resp::null_bulk_string(), false};
+        }
+        return {Resp::bulk_string(res.value), false};
     }
 
     CommandResult handle_del(const std::vector<std::string>& args) {
@@ -343,6 +366,8 @@ private:
     CommandResult format_incr_result(Store::IncrStatus status, int64_t result) {
         if (status == Store::IncrStatus::Success) {
             return {Resp::integer(result), false};
+        } else if (status == Store::IncrStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
         } else if (status == Store::IncrStatus::NotAnInteger) {
             return {Resp::error("value is not an integer or out of range"), false};
         } else {
@@ -467,6 +492,179 @@ private:
             return {Resp::error("ERR failed to start background AOF rewrite"), false};
         }
         return {Resp::simple_string("Background append only file rewriting started"), false};
+    }
+
+    CommandResult handle_lpush(const std::vector<std::string>& args) {
+        if (args.size() < 3) {
+            return {Resp::error("wrong number of arguments for 'lpush' command"), false};
+        }
+        std::vector<std::string> values(args.begin() + 2, args.end());
+        size_t new_len = 0;
+        auto status = store_.lpush(args[1], values, new_len);
+        if (status == Store::ListPushStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        return {Resp::integer(static_cast<long long>(new_len)), false};
+    }
+
+    CommandResult handle_rpush(const std::vector<std::string>& args) {
+        if (args.size() < 3) {
+            return {Resp::error("wrong number of arguments for 'rpush' command"), false};
+        }
+        std::vector<std::string> values(args.begin() + 2, args.end());
+        size_t new_len = 0;
+        auto status = store_.rpush(args[1], values, new_len);
+        if (status == Store::ListPushStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        return {Resp::integer(static_cast<long long>(new_len)), false};
+    }
+
+    CommandResult handle_lpop(const std::vector<std::string>& args) {
+        if (args.size() < 2 || args.size() > 3) {
+            return {Resp::error("wrong number of arguments for 'lpop' command"), false};
+        }
+        if (args.size() == 2) {
+            std::vector<std::string> popped;
+            auto status = store_.lpop(args[1], 1, popped);
+            if (status == Store::ListPopStatus::WrongType) {
+                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            }
+            if (status == Store::ListPopStatus::NotFound || popped.empty()) {
+                return {Resp::null_bulk_string(), false};
+            }
+            return {Resp::bulk_string(popped[0]), false};
+        }
+
+        int64_t count = 0;
+        if (!Store::parse_int64(args[2], count) || count < 0) {
+            return {Resp::error("value is out of range, must be positive"), false};
+        }
+        if (count == 0) {
+            size_t len = 0;
+            auto lstatus = store_.llen(args[1], len);
+            if (lstatus == Store::ListLenStatus::WrongType) {
+                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            }
+            if (len == 0 && store_.exists({args[1]}) == 0) {
+                return {Resp::null_array(), false};
+            }
+            return {Resp::empty_array(), false};
+        }
+
+        std::vector<std::string> popped;
+        auto status = store_.lpop(args[1], static_cast<size_t>(count), popped);
+        if (status == Store::ListPopStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        if (status == Store::ListPopStatus::NotFound) {
+            return {Resp::null_array(), false};
+        }
+        return {Resp::array(popped), false};
+    }
+
+    CommandResult handle_rpop(const std::vector<std::string>& args) {
+        if (args.size() < 2 || args.size() > 3) {
+            return {Resp::error("wrong number of arguments for 'rpop' command"), false};
+        }
+        if (args.size() == 2) {
+            std::vector<std::string> popped;
+            auto status = store_.rpop(args[1], 1, popped);
+            if (status == Store::ListPopStatus::WrongType) {
+                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            }
+            if (status == Store::ListPopStatus::NotFound || popped.empty()) {
+                return {Resp::null_bulk_string(), false};
+            }
+            return {Resp::bulk_string(popped[0]), false};
+        }
+
+        int64_t count = 0;
+        if (!Store::parse_int64(args[2], count) || count < 0) {
+            return {Resp::error("value is out of range, must be positive"), false};
+        }
+        if (count == 0) {
+            size_t len = 0;
+            auto lstatus = store_.llen(args[1], len);
+            if (lstatus == Store::ListLenStatus::WrongType) {
+                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            }
+            if (len == 0 && store_.exists({args[1]}) == 0) {
+                return {Resp::null_array(), false};
+            }
+            return {Resp::empty_array(), false};
+        }
+
+        std::vector<std::string> popped;
+        auto status = store_.rpop(args[1], static_cast<size_t>(count), popped);
+        if (status == Store::ListPopStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        if (status == Store::ListPopStatus::NotFound) {
+            return {Resp::null_array(), false};
+        }
+        return {Resp::array(popped), false};
+    }
+
+    CommandResult handle_llen(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'llen' command"), false};
+        }
+        size_t len = 0;
+        auto status = store_.llen(args[1], len);
+        if (status == Store::ListLenStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        return {Resp::integer(static_cast<long long>(len)), false};
+    }
+
+    CommandResult handle_lrange(const std::vector<std::string>& args) {
+        if (args.size() != 4) {
+            return {Resp::error("wrong number of arguments for 'lrange' command"), false};
+        }
+        int64_t start = 0;
+        int64_t stop = 0;
+        if (!Store::parse_int64(args[2], start) || !Store::parse_int64(args[3], stop)) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        std::vector<std::string> elements;
+        auto status = store_.lrange(args[1], start, stop, elements);
+        if (status == Store::ListRangeStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        return {Resp::array(elements), false};
+    }
+
+    CommandResult handle_lindex(const std::vector<std::string>& args) {
+        if (args.size() != 3) {
+            return {Resp::error("wrong number of arguments for 'lindex' command"), false};
+        }
+        int64_t index = 0;
+        if (!Store::parse_int64(args[2], index)) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        std::string elem;
+        auto status = store_.lindex(args[1], index, elem);
+        if (status == Store::ListRangeStatus::WrongType) {
+            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+        }
+        if (status == Store::ListRangeStatus::NotFound) {
+            return {Resp::null_bulk_string(), false};
+        }
+        return {Resp::bulk_string(elem), false};
+    }
+
+    CommandResult handle_type(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'type' command"), false};
+        }
+        auto t = store_.key_type(args[1]);
+        switch (t) {
+            case Store::KeyType::String: return {Resp::simple_string("string"), false};
+            case Store::KeyType::List: return {Resp::simple_string("list"), false};
+            case Store::KeyType::None:
+            default: return {Resp::simple_string("none"), false};
+        }
     }
 };
 

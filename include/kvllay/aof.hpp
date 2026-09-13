@@ -320,15 +320,36 @@ private:
 
         for (const auto& entry : entries) {
             std::string serialized;
-            if (entry.expire_at_epoch_ms == 0) {
-                serialized = Resp::array({"SET", entry.key, entry.value});
-            } else if (entry.expire_at_epoch_ms > now_wall) {
-                uint64_t rem_ms = entry.expire_at_epoch_ms - now_wall;
-                uint64_t rem_sec = (rem_ms + 999) / 1000;
-                if (rem_sec == 0) rem_sec = 1;
-                serialized = Resp::array({"SETEX", entry.key, std::to_string(rem_sec), entry.value});
+            if (entry.type == Store::EntryType::String) {
+                if (entry.expire_at_epoch_ms == 0) {
+                    serialized = Resp::array({"SET", entry.key, entry.string_val});
+                } else if (entry.expire_at_epoch_ms > now_wall) {
+                    uint64_t rem_ms = entry.expire_at_epoch_ms - now_wall;
+                    uint64_t rem_sec = (rem_ms + 999) / 1000;
+                    if (rem_sec == 0) rem_sec = 1;
+                    serialized = Resp::array({"SETEX", entry.key, std::to_string(rem_sec), entry.string_val});
+                } else {
+                    continue; // Key already expired
+                }
+            } else if (entry.type == Store::EntryType::List) {
+                if (entry.list_val.empty()) continue;
+                if (entry.expire_at_epoch_ms != 0 && entry.expire_at_epoch_ms <= now_wall) {
+                    continue; // Key already expired
+                }
+                std::vector<std::string> rpush_args;
+                rpush_args.reserve(2 + entry.list_val.size());
+                rpush_args.push_back("RPUSH");
+                rpush_args.push_back(entry.key);
+                for (const auto& elem : entry.list_val) {
+                    rpush_args.push_back(elem);
+                }
+                serialized = Resp::array(rpush_args);
+                if (entry.expire_at_epoch_ms > now_wall) {
+                    uint64_t rem_ms = entry.expire_at_epoch_ms - now_wall;
+                    serialized += Resp::array({"PEXPIRE", entry.key, std::to_string(rem_ms)});
+                }
             } else {
-                continue; // Key already expired
+                continue;
             }
 
             if (fwrite(serialized.data(), 1, serialized.size(), tmp_fp) != serialized.size()) {
@@ -431,6 +452,34 @@ private:
                 kvs.emplace_back(args[i], args[i + 1]);
             }
             store.mset(kvs);
+        } else if (cmd == "LPUSH" && args.size() >= 3) {
+            std::vector<std::string> values(args.begin() + 2, args.end());
+            size_t new_len = 0;
+            store.lpush(args[1], values, new_len);
+        } else if (cmd == "RPUSH" && args.size() >= 3) {
+            std::vector<std::string> values(args.begin() + 2, args.end());
+            size_t new_len = 0;
+            store.rpush(args[1], values, new_len);
+        } else if (cmd == "LPOP" && args.size() >= 2) {
+            size_t count = 1;
+            if (args.size() >= 3) {
+                try {
+                    long long c = std::stoll(args[2]);
+                    if (c > 0) count = static_cast<size_t>(c);
+                } catch (...) {}
+            }
+            std::vector<std::string> popped;
+            store.lpop(args[1], count, popped);
+        } else if (cmd == "RPOP" && args.size() >= 2) {
+            size_t count = 1;
+            if (args.size() >= 3) {
+                try {
+                    long long c = std::stoll(args[2]);
+                    if (c > 0) count = static_cast<size_t>(c);
+                } catch (...) {}
+            }
+            std::vector<std::string> popped;
+            store.rpop(args[1], count, popped);
         }
     }
 

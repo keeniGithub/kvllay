@@ -65,6 +65,7 @@ public:
 class SnapshotManager {
 public:
     static constexpr char MAGIC[8] = {'K', 'V', 'L', 'L', 'A', 'Y', 'S', '1'};
+    static constexpr char MAGIC2[8] = {'K', 'V', 'L', 'L', 'A', 'Y', 'S', '2'};
 
     SnapshotManager(std::string snapshot_path = constants::DEFAULT_SNAPSHOT_FILE,
                     uint64_t save_interval_secs = constants::DEFAULT_SAVE_INTERVAL_SECS,
@@ -165,7 +166,9 @@ public:
         }
 
         // Verify magic header
-        if (std::memcmp(buffer.data(), MAGIC, sizeof(MAGIC)) != 0) {
+        bool is_v1 = (std::memcmp(buffer.data(), MAGIC, sizeof(MAGIC)) == 0);
+        bool is_v2 = (std::memcmp(buffer.data(), MAGIC2, sizeof(MAGIC2)) == 0);
+        if (!is_v1 && !is_v2) {
             return false;
         }
 
@@ -192,31 +195,96 @@ public:
         std::memcpy(&count, buffer.data() + offset, sizeof(uint64_t));
         offset += sizeof(uint64_t);
 
-        for (uint64_t i = 0; i < count; ++i) {
-            if (offset + sizeof(uint32_t) > data_len) return false;
-            uint32_t key_len = 0;
-            std::memcpy(&key_len, buffer.data() + offset, sizeof(uint32_t));
-            offset += sizeof(uint32_t);
+        if (is_v1) {
+            for (uint64_t i = 0; i < count; ++i) {
+                if (offset + sizeof(uint32_t) > data_len) return false;
+                uint32_t key_len = 0;
+                std::memcpy(&key_len, buffer.data() + offset, sizeof(uint32_t));
+                offset += sizeof(uint32_t);
 
-            if (offset + key_len > data_len) return false;
-            std::string key(reinterpret_cast<char*>(buffer.data() + offset), key_len);
-            offset += key_len;
+                if (offset + key_len > data_len) return false;
+                std::string key(reinterpret_cast<char*>(buffer.data() + offset), key_len);
+                offset += key_len;
 
-            if (offset + sizeof(uint32_t) > data_len) return false;
-            uint32_t val_len = 0;
-            std::memcpy(&val_len, buffer.data() + offset, sizeof(uint32_t));
-            offset += sizeof(uint32_t);
+                if (offset + sizeof(uint32_t) > data_len) return false;
+                uint32_t val_len = 0;
+                std::memcpy(&val_len, buffer.data() + offset, sizeof(uint32_t));
+                offset += sizeof(uint32_t);
 
-            if (offset + val_len > data_len) return false;
-            std::string val(reinterpret_cast<char*>(buffer.data() + offset), val_len);
-            offset += val_len;
+                if (offset + val_len > data_len) return false;
+                std::string val(reinterpret_cast<char*>(buffer.data() + offset), val_len);
+                offset += val_len;
 
-            if (offset + sizeof(uint64_t) > data_len) return false;
-            uint64_t expire_at = 0;
-            std::memcpy(&expire_at, buffer.data() + offset, sizeof(uint64_t));
-            offset += sizeof(uint64_t);
+                if (offset + sizeof(uint64_t) > data_len) return false;
+                uint64_t expire_at = 0;
+                std::memcpy(&expire_at, buffer.data() + offset, sizeof(uint64_t));
+                offset += sizeof(uint64_t);
 
-            store.restore_entry(key, val, expire_at);
+                store.restore_string_entry(key, val, expire_at);
+            }
+        } else {
+            // V2 format: supports string and list entries
+            for (uint64_t i = 0; i < count; ++i) {
+                if (offset + sizeof(uint8_t) > data_len) return false;
+                uint8_t entry_type = buffer[offset++];
+
+                if (offset + sizeof(uint32_t) > data_len) return false;
+                uint32_t key_len = 0;
+                std::memcpy(&key_len, buffer.data() + offset, sizeof(uint32_t));
+                offset += sizeof(uint32_t);
+
+                if (offset + key_len > data_len) return false;
+                std::string key(reinterpret_cast<char*>(buffer.data() + offset), key_len);
+                offset += key_len;
+
+                if (entry_type == static_cast<uint8_t>(Store::EntryType::String)) {
+                    if (offset + sizeof(uint32_t) > data_len) return false;
+                    uint32_t val_len = 0;
+                    std::memcpy(&val_len, buffer.data() + offset, sizeof(uint32_t));
+                    offset += sizeof(uint32_t);
+
+                    if (offset + val_len > data_len) return false;
+                    std::string val(reinterpret_cast<char*>(buffer.data() + offset), val_len);
+                    offset += val_len;
+
+                    if (offset + sizeof(uint64_t) > data_len) return false;
+                    uint64_t expire_at = 0;
+                    std::memcpy(&expire_at, buffer.data() + offset, sizeof(uint64_t));
+                    offset += sizeof(uint64_t);
+
+                    store.restore_string_entry(key, val, expire_at);
+                } else if (entry_type == static_cast<uint8_t>(Store::EntryType::List)) {
+                    if (offset + sizeof(uint32_t) > data_len) return false;
+                    uint32_t elem_count = 0;
+                    std::memcpy(&elem_count, buffer.data() + offset, sizeof(uint32_t));
+                    offset += sizeof(uint32_t);
+
+                    std::vector<std::string> elements;
+                    elements.reserve(elem_count);
+
+                    for (uint32_t j = 0; j < elem_count; ++j) {
+                        if (offset + sizeof(uint32_t) > data_len) return false;
+                        uint32_t elem_len = 0;
+                        std::memcpy(&elem_len, buffer.data() + offset, sizeof(uint32_t));
+                        offset += sizeof(uint32_t);
+
+                        if (offset + elem_len > data_len) return false;
+                        std::string elem(reinterpret_cast<char*>(buffer.data() + offset), elem_len);
+                        offset += elem_len;
+
+                        elements.push_back(std::move(elem));
+                    }
+
+                    if (offset + sizeof(uint64_t) > data_len) return false;
+                    uint64_t expire_at = 0;
+                    std::memcpy(&expire_at, buffer.data() + offset, sizeof(uint64_t));
+                    offset += sizeof(uint64_t);
+
+                    store.restore_list_entry(key, elements, expire_at);
+                } else {
+                    return false;
+                }
+            }
         }
 
         last_save_time_.store(timestamp);
@@ -287,7 +355,7 @@ private:
         };
 
         // 1. Magic header
-        if (!write_data(MAGIC, sizeof(MAGIC))) {
+        if (!write_data(MAGIC2, sizeof(MAGIC2))) {
             fclose(fp);
             remove(tmp_path.c_str());
             return false;
@@ -310,13 +378,26 @@ private:
 
         // 4. Entries
         for (const auto& entry : entries) {
+            uint8_t type = static_cast<uint8_t>(entry.type);
+            if (!write_data(&type, sizeof(type))) goto write_failed;
+
             uint32_t key_len = static_cast<uint32_t>(entry.key.size());
             if (!write_data(&key_len, sizeof(key_len))) goto write_failed;
             if (key_len > 0 && !write_data(entry.key.data(), key_len)) goto write_failed;
 
-            uint32_t val_len = static_cast<uint32_t>(entry.value.size());
-            if (!write_data(&val_len, sizeof(val_len))) goto write_failed;
-            if (val_len > 0 && !write_data(entry.value.data(), val_len)) goto write_failed;
+            if (entry.type == Store::EntryType::String) {
+                uint32_t val_len = static_cast<uint32_t>(entry.string_val.size());
+                if (!write_data(&val_len, sizeof(val_len))) goto write_failed;
+                if (val_len > 0 && !write_data(entry.string_val.data(), val_len)) goto write_failed;
+            } else if (entry.type == Store::EntryType::List) {
+                uint32_t elem_count = static_cast<uint32_t>(entry.list_val.size());
+                if (!write_data(&elem_count, sizeof(elem_count))) goto write_failed;
+                for (const auto& elem : entry.list_val) {
+                    uint32_t elem_len = static_cast<uint32_t>(elem.size());
+                    if (!write_data(&elem_len, sizeof(elem_len))) goto write_failed;
+                    if (elem_len > 0 && !write_data(elem.data(), elem_len)) goto write_failed;
+                }
+            }
 
             uint64_t expire_at = entry.expire_at_epoch_ms;
             if (!write_data(&expire_at, sizeof(expire_at))) goto write_failed;

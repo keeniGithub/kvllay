@@ -35,6 +35,10 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `SETEX key seconds value`
   - `INCR key` / `DECR key`
   - `INCRBY key increment` / `DECRBY key decrement`
+  - `LPUSH key value [value ...]` / `RPUSH key value [value ...]`
+  - `LPOP key [count]` / `RPOP key [count]`
+  - `LLEN key` / `LRANGE key start stop` / `LINDEX key index`
+  - `TYPE key`
   - `SAVE` (synchronous snapshot)
   - `BGSAVE` (background snapshot without `fork()`)
   - `LASTSAVE` (UNIX epoch timestamp of last save)
@@ -43,6 +47,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `COMMAND` / `COMMAND DOCS` (redis-cli handshake)
   - `INFO` (includes `# Persistence`)
   - `QUIT`
+- **Lists & Task Queues (Basic Structures)**: $O(1)$ push/pop operations powered by `std::deque` and 32-way lock striping for high-throughput message buffers, job queues, and LIFO/FIFO pipelines.
 - **Zero-Fork Persistence (Snapshots & AOF)**:
   - **Snapshots (`dump.kvl`)**: Compact binary format with CRC32 data integrity, atomic file rename, and zero `fork()` (no page-table pauses or Copy-On-Write memory doubling).
   - **Append-Only Log (`kvllay.aof`)**: Asynchronous double-buffered logger with configurable fsync (`always`, `everysec`, `no`), decoupling client request latency from disk I/O.
@@ -118,6 +123,15 @@ OK
 (integer) 1
 127.0.0.1:6379> INCRBY hits 10
 (integer) 11
+127.0.0.1:6379> RPUSH tasks "send_email" "process_payment" "notify_user"
+(integer) 3
+127.0.0.1:6379> LLEN tasks
+(integer) 3
+127.0.0.1:6379> LPOP tasks
+"send_email"
+127.0.0.1:6379> LRANGE tasks 0 -1
+1) "process_payment"
+2) "notify_user"
 ```
 
 ### With password
