@@ -29,19 +29,28 @@ public:
     void set_snapshot_manager(SnapshotManager* mgr) { snapshot_mgr_ = mgr; }
     void set_aof_manager(AofManager* mgr) { aof_mgr_ = mgr; }
 
+    static inline bool iequals(std::string_view a, std::string_view b) noexcept {
+        if (a.size() != b.size()) return false;
+        for (size_t i = 0; i < a.size(); ++i) {
+            if (std::toupper(static_cast<unsigned char>(a[i])) != b[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     CommandResult dispatch(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
         if (args.empty()) {
             return {Resp::error("empty command"), false};
         }
 
-        std::string cmd = args[0];
-        std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
+        std::string_view cmd = args[0];
 
-        if (cmd == "QUIT") {
-            return {Resp::simple_string("OK"), true};
+        if (iequals(cmd, "QUIT")) {
+            return {Resp::ok(), true};
         }
 
-        if (cmd == "AUTH") {
+        if (iequals(cmd, "AUTH")) {
             return handle_auth(args, authenticated, server_password);
         }
 
@@ -52,74 +61,74 @@ public:
         CommandResult result;
         bool is_mutating = false;
 
-        if (cmd == "PING") {
-            result = handle_ping(args);
-        } else if (cmd == "SET") {
+        if (iequals(cmd, "GET")) {
+            result = handle_get(args);
+        } else if (iequals(cmd, "SET")) {
             is_mutating = true;
             result = handle_set(args);
-        } else if (cmd == "GET") {
-            result = handle_get(args);
-        } else if (cmd == "DEL") {
-            is_mutating = true;
-            result = handle_del(args);
-        } else if (cmd == "EXISTS") {
-            result = handle_exists(args);
-        } else if (cmd == "KEYS") {
-            result = handle_keys(args);
-        } else if (cmd == "FLUSHDB" || cmd == "FLUSHALL") {
-            is_mutating = true;
-            result = handle_flushdb(args);
-        } else if (cmd == "DBSIZE") {
-            result = handle_dbsize(args);
-        } else if (cmd == "ECHO") {
-            result = handle_echo(args);
-        } else if (cmd == "COMMAND") {
-            result = handle_command(args);
-        } else if (cmd == "INFO") {
-            result = handle_info(args);
-        } else if (cmd == "EXPIRE") {
-            is_mutating = true;
-            result = handle_expire(args);
-        } else if (cmd == "PEXPIRE") {
-            is_mutating = true;
-            result = handle_pexpire(args);
-        } else if (cmd == "TTL") {
-            result = handle_ttl(args);
-        } else if (cmd == "PTTL") {
-            result = handle_pttl(args);
-        } else if (cmd == "PERSIST") {
-            is_mutating = true;
-            result = handle_persist(args);
-        } else if (cmd == "SETEX") {
-            is_mutating = true;
-            result = handle_setex(args);
-        } else if (cmd == "INCR") {
+        } else if (iequals(cmd, "INCR")) {
             is_mutating = true;
             result = handle_incr(args);
-        } else if (cmd == "DECR") {
+        } else if (iequals(cmd, "PING")) {
+            result = handle_ping(args);
+        } else if (iequals(cmd, "DEL")) {
             is_mutating = true;
-            result = handle_decr(args);
-        } else if (cmd == "INCRBY") {
-            is_mutating = true;
-            result = handle_incrby(args);
-        } else if (cmd == "DECRBY") {
-            is_mutating = true;
-            result = handle_decrby(args);
-        } else if (cmd == "MGET") {
+            result = handle_del(args);
+        } else if (iequals(cmd, "EXISTS")) {
+            result = handle_exists(args);
+        } else if (iequals(cmd, "MGET")) {
             result = handle_mget(args);
-        } else if (cmd == "MSET") {
+        } else if (iequals(cmd, "MSET")) {
             is_mutating = true;
             result = handle_mset(args);
-        } else if (cmd == "SAVE") {
+        } else if (iequals(cmd, "DECR")) {
+            is_mutating = true;
+            result = handle_decr(args);
+        } else if (iequals(cmd, "INCRBY")) {
+            is_mutating = true;
+            result = handle_incrby(args);
+        } else if (iequals(cmd, "DECRBY")) {
+            is_mutating = true;
+            result = handle_decrby(args);
+        } else if (iequals(cmd, "TTL")) {
+            result = handle_ttl(args);
+        } else if (iequals(cmd, "PTTL")) {
+            result = handle_pttl(args);
+        } else if (iequals(cmd, "EXPIRE")) {
+            is_mutating = true;
+            result = handle_expire(args);
+        } else if (iequals(cmd, "PEXPIRE")) {
+            is_mutating = true;
+            result = handle_pexpire(args);
+        } else if (iequals(cmd, "PERSIST")) {
+            is_mutating = true;
+            result = handle_persist(args);
+        } else if (iequals(cmd, "SETEX")) {
+            is_mutating = true;
+            result = handle_setex(args);
+        } else if (iequals(cmd, "KEYS")) {
+            result = handle_keys(args);
+        } else if (iequals(cmd, "DBSIZE")) {
+            result = handle_dbsize(args);
+        } else if (iequals(cmd, "COMMAND")) {
+            result = handle_command(args);
+        } else if (iequals(cmd, "INFO")) {
+            result = handle_info(args);
+        } else if (iequals(cmd, "FLUSHDB") || iequals(cmd, "FLUSHALL")) {
+            is_mutating = true;
+            result = handle_flushdb(args);
+        } else if (iequals(cmd, "ECHO")) {
+            result = handle_echo(args);
+        } else if (iequals(cmd, "SAVE")) {
             result = handle_save(args);
-        } else if (cmd == "BGSAVE") {
+        } else if (iequals(cmd, "BGSAVE")) {
             result = handle_bgsave(args);
-        } else if (cmd == "LASTSAVE") {
+        } else if (iequals(cmd, "LASTSAVE")) {
             result = handle_lastsave(args);
-        } else if (cmd == "BGREWRITEAOF") {
+        } else if (iequals(cmd, "BGREWRITEAOF")) {
             result = handle_bgrewriteaof(args);
         } else {
-            return {Resp::error("unknown command '" + args[0] + "'"), false};
+            return {Resp::error("unknown command '" + std::string(cmd) + "'"), false};
         }
 
         if (is_mutating && aof_mgr_ && aof_mgr_->is_enabled()) {

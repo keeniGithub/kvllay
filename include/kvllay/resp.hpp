@@ -4,11 +4,13 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <optional>
 #include <sstream>
 #include <cctype>
 #include <algorithm>
+#include <charconv>
 
 namespace kvllay {
 
@@ -21,7 +23,19 @@ enum class ParseStatus {
 class Resp {
 public:
     static std::string simple_string(const std::string& str) {
+        if (str == "OK") return ok();
+        if (str == "PONG") return pong();
         return "+" + str + "\r\n";
+    }
+
+    static const std::string& ok() {
+        static const std::string s = "+OK\r\n";
+        return s;
+    }
+
+    static const std::string& pong() {
+        static const std::string s = "+PONG\r\n";
+        return s;
     }
 
     static std::string error(const std::string& err) {
@@ -39,12 +53,14 @@ public:
         return "$" + std::to_string(val.size()) + "\r\n" + val + "\r\n";
     }
 
-    static std::string null_bulk_string() {
-        return "$-1\r\n";
+    static const std::string& null_bulk_string() {
+        static const std::string s = "$-1\r\n";
+        return s;
     }
 
-    static std::string empty_array() {
-        return "*0\r\n";
+    static const std::string& empty_array() {
+        static const std::string s = "*0\r\n";
+        return s;
     }
 
     static std::string array(const std::vector<std::string>& items) {
@@ -67,7 +83,7 @@ public:
         return res;
     }
 
-    static ParseStatus parse_command(const std::string& buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
+    static ParseStatus parse_command(std::string_view buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
         args.clear();
         consumed_bytes = 0;
 
@@ -83,17 +99,16 @@ public:
     }
 
 private:
-    static ParseStatus parse_resp_array(const std::string& buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
+    static ParseStatus parse_resp_array(std::string_view buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
         size_t pos = buffer.find("\r\n");
-        if (pos == std::string::npos) {
+        if (pos == std::string_view::npos) {
             return ParseStatus::Incomplete;
         }
 
-        std::string count_str = buffer.substr(1, pos - 1);
+        std::string_view count_sv = buffer.substr(1, pos - 1);
         long long count = 0;
-        try {
-            count = std::stoll(count_str);
-        } catch (...) {
+        auto [ptr1, ec1] = std::from_chars(count_sv.data(), count_sv.data() + count_sv.size(), count);
+        if (ec1 != std::errc() || ptr1 != count_sv.data() + count_sv.size()) {
             return ParseStatus::Error;
         }
 
@@ -115,15 +130,14 @@ private:
             }
 
             size_t crlf = buffer.find("\r\n", current);
-            if (crlf == std::string::npos) {
+            if (crlf == std::string_view::npos) {
                 return ParseStatus::Incomplete;
             }
 
-            std::string len_str = buffer.substr(current + 1, crlf - (current + 1));
+            std::string_view len_sv = buffer.substr(current + 1, crlf - (current + 1));
             long long str_len = 0;
-            try {
-                str_len = std::stoll(len_str);
-            } catch (...) {
+            auto [ptr2, ec2] = std::from_chars(len_sv.data(), len_sv.data() + len_sv.size(), str_len);
+            if (ec2 != std::errc() || ptr2 != len_sv.data() + len_sv.size()) {
                 return ParseStatus::Error;
             }
 
@@ -143,7 +157,7 @@ private:
                 return ParseStatus::Error;
             }
 
-            args.push_back(buffer.substr(data_start, str_len));
+            args.emplace_back(buffer.substr(data_start, str_len));
             current = data_end + 2;
         }
 
@@ -151,19 +165,19 @@ private:
         return ParseStatus::Success;
     }
 
-    static ParseStatus parse_inline_command(const std::string& buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
+    static ParseStatus parse_inline_command(std::string_view buffer, std::vector<std::string>& args, size_t& consumed_bytes) {
         size_t line_end = buffer.find("\r\n");
         size_t delim_len = 2;
-        if (line_end == std::string::npos) {
+        if (line_end == std::string_view::npos) {
             line_end = buffer.find('\n');
             delim_len = 1;
         }
 
-        if (line_end == std::string::npos) {
+        if (line_end == std::string_view::npos) {
             return ParseStatus::Incomplete;
         }
 
-        std::string line = buffer.substr(0, line_end);
+        std::string_view line = buffer.substr(0, line_end);
         consumed_bytes = line_end + delim_len;
 
         size_t idx = 0;
@@ -191,7 +205,7 @@ private:
                 while (idx < line.size() && !std::isspace(static_cast<unsigned char>(line[idx]))) {
                     idx++;
                 }
-                args.push_back(line.substr(start, idx - start));
+                args.emplace_back(line.substr(start, idx - start));
             }
         }
 

@@ -398,19 +398,24 @@ All tests were conducted on identical hardware under identical isolation conditi
 
 ### 6.2 Performance Comparison Table
 
-| Metric / Workload | kvllay v1.0.0 | Redis v7.x | Comparison / Advantage |
+| Metric / Workload | kvllay v1.0.0 | Redis v8.x (8.8.0) | Comparison / Advantage |
 | :--- | :---: | :---: | :--- |
-| **Single-Client: SET** | **62,235 RPS** | 52,815 RPS | **kvllay is +17.8% faster** |
-| **Single-Client: GET** | **68,336 RPS** | 59,947 RPS | **kvllay is +14.0% faster** |
-| **Parallel Clients (8 threads): SET** | **125,341 RPS** | 127,723 RPS | On par (~98% of Redis) |
-| **Parallel Clients (8 threads): GET** | **122,973 RPS** | 118,350 RPS | **kvllay is +3.9% faster** |
-| **redis-benchmark (50 clients): SET** | **124,069 RPS** | 128,500 RPS | Virtually identical |
-| **redis-benchmark (50 clients): GET** | **128,866 RPS** | 126,100 RPS | **kvllay is +2.2% faster** |
-| **Latency p50 (Parallel)** | **0.044 ms** | 0.048 ms | **kvllay has 8% lower median latency** |
-| **Latency p99 (Parallel)** | **0.239 ms** | 0.231 ms | Virtually identical |
-| **Idle Memory Consumption** | **~2.4 MB** | ~11.5 MB | **kvllay consumes 4.8x less RAM** |
-| **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay is nearly 100x smaller** |
-| **Cold Start Time** | **< 2 ms** | ~35 ms | **kvllay boots 15x faster** |
+| **Single-Client: SET** | **78,077 RPS** | 69,913 RPS | **kvllay is +11.7% faster** |
+| **Single-Client: GET** | **82,471 RPS** | 70,437 RPS | **kvllay is +17.1% faster** |
+| **Single-Client: INCR** | **84,718 RPS** | 70,422 RPS | **kvllay is +20.3% faster** |
+| **Single-Client: MSET (5 keys)** | **78,665 RPS** | 59,143 RPS | **kvllay is +33.0% faster** |
+| **Single-Client: PING** | **79,766 RPS** | 65,502 RPS | **kvllay is +21.8% faster** |
+| **Parallel Clients (8 threads): SET** | **120,268 RPS** | 119,629 RPS | **kvllay ahead (32-shard lock striping)** |
+| **Concurrent Clients (50 clients): GET** | **136,799 RPS** | 131,752 RPS | **kvllay is +3.8% faster** |
+| **Concurrent Clients (50 clients): INCR** | **139,860 RPS** | 136,799 RPS | **kvllay is +2.2% faster** |
+| **redis-benchmark (50 clients): PING** | **132,626 RPS** | 109,890 RPS | **kvllay is +20.7% faster** |
+| **Response Latency p50 (8 Parallel Threads)** | **0.047 ms (47 μs)** | 0.052 ms (52 μs) | **kvllay has 10% lower latency** |
+| **Response Latency p50 (50 Concurrent Clients)** | **0.175 ms (175 μs)** | 0.183 ms (183 μs) | **kvllay has 4.4% lower latency** |
+| **Idle Memory Consumption** | **~4.1 MB** | ~15.2 MB | **kvllay is 3.7x lighter** |
+| **Populated Memory (50k keys)** | **~11.4 MB** | ~20.0 MB | **kvllay uses 43% less RAM** |
+| **Cold Start Time** | **~3.2 ms** | ~7.6 ms | **kvllay boots 2.4x faster** |
+| **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay is 87x smaller** |
+| **Throughput with AOF (`everysec`)** | **103,386 RPS** | 113,286 RPS | Exceeds >100k RPS with durable disk logging |
 
 ### 6.3 Visual Throughput Charts
 

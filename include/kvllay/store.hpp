@@ -7,6 +7,8 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <array>
+#include <algorithm>
 #include <optional>
 #include <shared_mutex>
 #include <mutex>
@@ -23,6 +25,8 @@ namespace kvllay {
 
 class Store {
 public:
+    static constexpr size_t NUM_SHARDS = 32;
+
     struct Entry {
         std::string value;
         uint64_t expire_at = 0;
@@ -107,38 +111,65 @@ public:
     }
 
     bool set(const std::string& key, const std::string& value) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        data_[key] = Entry{value, 0};
-        keys_with_ttl_.erase(key);
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
+        {
+            std::unique_lock<std::shared_mutex> lock(shard.mutex);
+            shard.data[key] = Entry{value, 0};
+            shard.keys_with_ttl.erase(key);
+        }
         dirty_++;
         return true;
     }
 
     bool mset(const std::vector<std::pair<std::string, std::string>>& kvs) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        if (kvs.empty()) return true;
+
+        std::vector<size_t> involved_shards;
+        involved_shards.reserve(kvs.size());
+        for (const auto& [k, v] : kvs) {
+            involved_shards.push_back(shard_index(k));
+        }
+        std::sort(involved_shards.begin(), involved_shards.end());
+        involved_shards.erase(std::unique(involved_shards.begin(), involved_shards.end()), involved_shards.end());
+
+        std::vector<std::unique_lock<std::shared_mutex>> locks;
+        locks.reserve(involved_shards.size());
+        for (size_t s_idx : involved_shards) {
+            locks.emplace_back(shards_[s_idx].mutex);
+        }
+
         for (const auto& [key, value] : kvs) {
-            data_[key] = Entry{value, 0};
-            keys_with_ttl_.erase(key);
+            size_t idx = shard_index(key);
+            auto& shard = shards_[idx];
+            shard.data[key] = Entry{value, 0};
+            shard.keys_with_ttl.erase(key);
         }
         dirty_ += kvs.size();
         return true;
     }
 
     bool setex(const std::string& key, uint64_t ttl_ms, const std::string& value) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
         uint64_t expire_at = current_time_ms() + ttl_ms;
-        data_[key] = Entry{value, expire_at};
-        keys_with_ttl_.insert(key);
+        {
+            std::unique_lock<std::shared_mutex> lock(shard.mutex);
+            shard.data[key] = Entry{value, expire_at};
+            shard.keys_with_ttl.insert(key);
+        }
         dirty_++;
         return true;
     }
 
     std::optional<std::string> get(const std::string& key) {
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
         uint64_t now = current_time_ms();
         {
-            std::shared_lock<std::shared_mutex> lock(mutex_);
-            auto it = data_.find(key);
-            if (it == data_.end()) {
+            std::shared_lock<std::shared_mutex> lock(shard.mutex);
+            auto it = shard.data.find(key);
+            if (it == shard.data.end()) {
                 return std::nullopt;
             }
             if (it->second.expire_at == 0 || it->second.expire_at > now) {
@@ -146,12 +177,12 @@ public:
             }
         }
 
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        auto it = data_.find(key);
-        if (it != data_.end()) {
+        std::unique_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.data.find(key);
+        if (it != shard.data.end()) {
             if (it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
-                data_.erase(it);
-                keys_with_ttl_.erase(key);
+                shard.data.erase(it);
+                shard.keys_with_ttl.erase(key);
                 return std::nullopt;
             }
             return it->second.value;
@@ -165,29 +196,45 @@ public:
         result.reserve(keys.size());
         std::vector<std::string> expired_keys;
 
-        {
-            std::shared_lock<std::shared_mutex> lock(mutex_);
-            for (const auto& key : keys) {
-                auto it = data_.find(key);
-                if (it == data_.end()) {
-                    result.push_back(std::nullopt);
-                } else if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-                    result.push_back(std::nullopt);
-                    expired_keys.push_back(key);
-                } else {
-                    result.push_back(it->second.value);
-                }
-            }
+        std::vector<size_t> involved_shards;
+        involved_shards.reserve(keys.size());
+        for (const auto& k : keys) {
+            involved_shards.push_back(shard_index(k));
+        }
+        std::sort(involved_shards.begin(), involved_shards.end());
+        involved_shards.erase(std::unique(involved_shards.begin(), involved_shards.end()), involved_shards.end());
+
+        std::vector<std::shared_lock<std::shared_mutex>> locks;
+        locks.reserve(involved_shards.size());
+        for (size_t s_idx : involved_shards) {
+            locks.emplace_back(shards_[s_idx].mutex);
         }
 
+        for (const auto& key : keys) {
+            size_t idx = shard_index(key);
+            auto& shard = shards_[idx];
+            auto it = shard.data.find(key);
+            if (it == shard.data.end()) {
+                result.push_back(std::nullopt);
+            } else if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+                result.push_back(std::nullopt);
+                expired_keys.push_back(key);
+            } else {
+                result.push_back(it->second.value);
+            }
+        }
+        locks.clear();
+
         if (!expired_keys.empty()) {
-            std::unique_lock<std::shared_mutex> lock(mutex_);
             uint64_t cur_now = current_time_ms();
             for (const auto& key : expired_keys) {
-                auto it = data_.find(key);
-                if (it != data_.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
-                    data_.erase(it);
-                    keys_with_ttl_.erase(key);
+                size_t idx = shard_index(key);
+                auto& shard = shards_[idx];
+                std::unique_lock<std::shared_mutex> lock(shard.mutex);
+                auto it = shard.data.find(key);
+                if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
+                    shard.data.erase(it);
+                    shard.keys_with_ttl.erase(key);
                 }
             }
         }
@@ -196,15 +243,50 @@ public:
     }
 
     size_t del(const std::vector<std::string>& keys) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        if (keys.empty()) return 0;
+        if (keys.size() == 1) {
+            const auto& key = keys[0];
+            size_t idx = shard_index(key);
+            auto& shard = shards_[idx];
+            std::unique_lock<std::shared_mutex> lock(shard.mutex);
+            uint64_t now = current_time_ms();
+            auto it = shard.data.find(key);
+            if (it != shard.data.end()) {
+                bool is_active = (it->second.expire_at == 0 || it->second.expire_at > now);
+                shard.data.erase(it);
+                shard.keys_with_ttl.erase(key);
+                if (is_active) {
+                    dirty_++;
+                    return 1;
+                }
+            }
+            return 0;
+        }
+
+        std::vector<size_t> involved_shards;
+        involved_shards.reserve(keys.size());
+        for (const auto& k : keys) {
+            involved_shards.push_back(shard_index(k));
+        }
+        std::sort(involved_shards.begin(), involved_shards.end());
+        involved_shards.erase(std::unique(involved_shards.begin(), involved_shards.end()), involved_shards.end());
+
+        std::vector<std::unique_lock<std::shared_mutex>> locks;
+        locks.reserve(involved_shards.size());
+        for (size_t s_idx : involved_shards) {
+            locks.emplace_back(shards_[s_idx].mutex);
+        }
+
         size_t count = 0;
         uint64_t now = current_time_ms();
         for (const auto& key : keys) {
-            auto it = data_.find(key);
-            if (it != data_.end()) {
+            size_t idx = shard_index(key);
+            auto& shard = shards_[idx];
+            auto it = shard.data.find(key);
+            if (it != shard.data.end()) {
                 bool is_active = (it->second.expire_at == 0 || it->second.expire_at > now);
-                data_.erase(it);
-                keys_with_ttl_.erase(key);
+                shard.data.erase(it);
+                shard.keys_with_ttl.erase(key);
                 if (is_active) {
                     count++;
                 }
@@ -217,32 +299,49 @@ public:
     }
 
     size_t exists(const std::vector<std::string>& keys) {
+        if (keys.empty()) return 0;
         uint64_t now = current_time_ms();
         std::vector<std::string> expired_keys;
         size_t count = 0;
 
-        {
-            std::shared_lock<std::shared_mutex> lock(mutex_);
-            for (const auto& key : keys) {
-                auto it = data_.find(key);
-                if (it != data_.end()) {
-                    if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-                        expired_keys.push_back(key);
-                    } else {
-                        count++;
-                    }
+        std::vector<size_t> involved_shards;
+        involved_shards.reserve(keys.size());
+        for (const auto& k : keys) {
+            involved_shards.push_back(shard_index(k));
+        }
+        std::sort(involved_shards.begin(), involved_shards.end());
+        involved_shards.erase(std::unique(involved_shards.begin(), involved_shards.end()), involved_shards.end());
+
+        std::vector<std::shared_lock<std::shared_mutex>> locks;
+        locks.reserve(involved_shards.size());
+        for (size_t s_idx : involved_shards) {
+            locks.emplace_back(shards_[s_idx].mutex);
+        }
+
+        for (const auto& key : keys) {
+            size_t idx = shard_index(key);
+            auto& shard = shards_[idx];
+            auto it = shard.data.find(key);
+            if (it != shard.data.end()) {
+                if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+                    expired_keys.push_back(key);
+                } else {
+                    count++;
                 }
             }
         }
+        locks.clear();
 
         if (!expired_keys.empty()) {
-            std::unique_lock<std::shared_mutex> lock(mutex_);
             uint64_t cur_now = current_time_ms();
             for (const auto& key : expired_keys) {
-                auto it = data_.find(key);
-                if (it != data_.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
-                    data_.erase(it);
-                    keys_with_ttl_.erase(key);
+                size_t idx = shard_index(key);
+                auto& shard = shards_[idx];
+                std::unique_lock<std::shared_mutex> lock(shard.mutex);
+                auto it = shard.data.find(key);
+                if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
+                    shard.data.erase(it);
+                    shard.keys_with_ttl.erase(key);
                 }
             }
         }
@@ -251,15 +350,16 @@ public:
     }
 
     std::vector<std::string> keys(const std::string& pattern = "*") const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
         std::vector<std::string> result;
         uint64_t now = current_time_ms();
 
         if (pattern == "*") {
-            result.reserve(data_.size());
-            for (const auto& [k, v] : data_) {
-                if (v.expire_at == 0 || v.expire_at > now) {
-                    result.push_back(k);
+            for (const auto& shard : shards_) {
+                std::shared_lock<std::shared_mutex> lock(shard.mutex);
+                for (const auto& [k, v] : shard.data) {
+                    if (v.expire_at == 0 || v.expire_at > now) {
+                        result.push_back(k);
+                    }
                 }
             }
             return result;
@@ -268,31 +368,46 @@ public:
         bool match_prefix = (!pattern.empty() && pattern.back() == '*');
         bool match_suffix = (!pattern.empty() && pattern.front() == '*');
 
+        if (!match_prefix && !match_suffix) {
+            size_t idx = shard_index(pattern);
+            auto& shard = shards_[idx];
+            std::shared_lock<std::shared_mutex> lock(shard.mutex);
+            auto it = shard.data.find(pattern);
+            if (it != shard.data.end() && (it->second.expire_at == 0 || it->second.expire_at > now)) {
+                result.push_back(pattern);
+            }
+            return result;
+        }
+
         std::string core = pattern;
         if (match_prefix && match_suffix && pattern.size() > 2) {
             core = pattern.substr(1, pattern.size() - 2);
-            for (const auto& [k, v] : data_) {
-                if (v.expire_at != 0 && v.expire_at <= now) continue;
-                if (k.find(core) != std::string::npos) result.push_back(k);
+            for (const auto& shard : shards_) {
+                std::shared_lock<std::shared_mutex> lock(shard.mutex);
+                for (const auto& [k, v] : shard.data) {
+                    if (v.expire_at != 0 && v.expire_at <= now) continue;
+                    if (k.find(core) != std::string::npos) result.push_back(k);
+                }
             }
         } else if (match_prefix) {
             core = pattern.substr(0, pattern.size() - 1);
-            for (const auto& [k, v] : data_) {
-                if (v.expire_at != 0 && v.expire_at <= now) continue;
-                if (k.rfind(core, 0) == 0) result.push_back(k);
+            for (const auto& shard : shards_) {
+                std::shared_lock<std::shared_mutex> lock(shard.mutex);
+                for (const auto& [k, v] : shard.data) {
+                    if (v.expire_at != 0 && v.expire_at <= now) continue;
+                    if (k.rfind(core, 0) == 0) result.push_back(k);
+                }
             }
         } else if (match_suffix) {
             core = pattern.substr(1);
-            for (const auto& [k, v] : data_) {
-                if (v.expire_at != 0 && v.expire_at <= now) continue;
-                if (k.size() >= core.size() && k.compare(k.size() - core.size(), core.size(), core) == 0) {
-                    result.push_back(k);
+            for (const auto& shard : shards_) {
+                std::shared_lock<std::shared_mutex> lock(shard.mutex);
+                for (const auto& [k, v] : shard.data) {
+                    if (v.expire_at != 0 && v.expire_at <= now) continue;
+                    if (k.size() >= core.size() && k.compare(k.size() - core.size(), core.size(), core) == 0) {
+                        result.push_back(k);
+                    }
                 }
-            }
-        } else {
-            auto it = data_.find(pattern);
-            if (it != data_.end() && (it->second.expire_at == 0 || it->second.expire_at > now)) {
-                result.push_back(pattern);
             }
         }
 
@@ -300,36 +415,40 @@ public:
     }
 
     int expire(const std::string& key, uint64_t ttl_ms) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        auto it = data_.find(key);
-        if (it == data_.end()) {
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
+        std::unique_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.data.find(key);
+        if (it == shard.data.end()) {
             return 0;
         }
         uint64_t now = current_time_ms();
         if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-            data_.erase(it);
-            keys_with_ttl_.erase(key);
+            shard.data.erase(it);
+            shard.keys_with_ttl.erase(key);
             return 0;
         }
 
         if (ttl_ms == 0) {
-            data_.erase(it);
-            keys_with_ttl_.erase(key);
+            shard.data.erase(it);
+            shard.keys_with_ttl.erase(key);
             return 1;
         }
 
         it->second.expire_at = now + ttl_ms;
-        keys_with_ttl_.insert(key);
+        shard.keys_with_ttl.insert(key);
         dirty_++;
         return 1;
     }
 
     long long ttl(const std::string& key, bool in_milliseconds) {
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
         uint64_t now = current_time_ms();
         {
-            std::shared_lock<std::shared_mutex> lock(mutex_);
-            auto it = data_.find(key);
-            if (it == data_.end()) {
+            std::shared_lock<std::shared_mutex> lock(shard.mutex);
+            auto it = shard.data.find(key);
+            if (it == shard.data.end()) {
                 return -2;
             }
             if (it->second.expire_at == 0) {
@@ -344,87 +463,96 @@ public:
             }
         }
 
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        auto it = data_.find(key);
-        if (it != data_.end() && it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
-            data_.erase(it);
-            keys_with_ttl_.erase(key);
+        std::unique_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.data.find(key);
+        if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+            shard.data.erase(it);
+            shard.keys_with_ttl.erase(key);
         }
         return -2;
     }
 
     int persist(const std::string& key) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        auto it = data_.find(key);
-        if (it == data_.end()) {
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
+        std::unique_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.data.find(key);
+        if (it == shard.data.end()) {
             return 0;
         }
         uint64_t now = current_time_ms();
         if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-            data_.erase(it);
-            keys_with_ttl_.erase(key);
+            shard.data.erase(it);
+            shard.keys_with_ttl.erase(key);
             return 0;
         }
         if (it->second.expire_at == 0) {
             return 0;
         }
         it->second.expire_at = 0;
-        keys_with_ttl_.erase(key);
+        shard.keys_with_ttl.erase(key);
         dirty_++;
         return 1;
     }
 
     void flushdb() {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        data_.clear();
-        keys_with_ttl_.clear();
+        for (auto& shard : shards_) {
+            std::unique_lock<std::shared_mutex> lock(shard.mutex);
+            shard.data.clear();
+            shard.keys_with_ttl.clear();
+        }
         dirty_++;
     }
 
     size_t size() const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
         uint64_t now = current_time_ms();
         size_t count = 0;
-        for (const auto& [k, v] : data_) {
-            if (v.expire_at == 0 || v.expire_at > now) {
-                count++;
+        for (const auto& shard : shards_) {
+            std::shared_lock<std::shared_mutex> lock(shard.mutex);
+            for (const auto& [k, v] : shard.data) {
+                if (v.expire_at == 0 || v.expire_at > now) {
+                    count++;
+                }
             }
         }
         return count;
     }
 
     size_t expires_size() const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
         uint64_t now = current_time_ms();
         size_t count = 0;
-        for (const auto& k : keys_with_ttl_) {
-            auto it = data_.find(k);
-            if (it != data_.end() && (it->second.expire_at == 0 || it->second.expire_at > now)) {
-                count++;
+        for (const auto& shard : shards_) {
+            std::shared_lock<std::shared_mutex> lock(shard.mutex);
+            for (const auto& k : shard.keys_with_ttl) {
+                auto it = shard.data.find(k);
+                if (it != shard.data.end() && (it->second.expire_at == 0 || it->second.expire_at > now)) {
+                    count++;
+                }
             }
         }
         return count;
     }
 
     void evict_expired(size_t batch_limit = constants::DEFAULT_EVICTION_BATCH_LIMIT) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
-        if (keys_with_ttl_.empty()) {
-            return;
-        }
         uint64_t now = current_time_ms();
-        std::vector<std::string> to_remove;
-        size_t checked = 0;
-        for (auto it = keys_with_ttl_.begin(); it != keys_with_ttl_.end() && checked < batch_limit; ++it, ++checked) {
-            auto data_it = data_.find(*it);
-            if (data_it == data_.end()) {
-                to_remove.push_back(*it);
-            } else if (data_it->second.expire_at != 0 && data_it->second.expire_at <= now) {
-                to_remove.push_back(*it);
-                data_.erase(data_it);
+        size_t limit_per_shard = (batch_limit + NUM_SHARDS - 1) / NUM_SHARDS;
+        for (auto& shard : shards_) {
+            std::unique_lock<std::shared_mutex> lock(shard.mutex);
+            if (shard.keys_with_ttl.empty()) continue;
+            std::vector<std::string> to_remove;
+            size_t checked = 0;
+            for (auto it = shard.keys_with_ttl.begin(); it != shard.keys_with_ttl.end() && checked < limit_per_shard; ++it, ++checked) {
+                auto data_it = shard.data.find(*it);
+                if (data_it == shard.data.end()) {
+                    to_remove.push_back(*it);
+                } else if (data_it->second.expire_at != 0 && data_it->second.expire_at <= now) {
+                    to_remove.push_back(*it);
+                    shard.data.erase(data_it);
+                }
             }
-        }
-        for (const auto& k : to_remove) {
-            keys_with_ttl_.erase(k);
+            for (const auto& k : to_remove) {
+                shard.keys_with_ttl.erase(k);
+            }
         }
     }
 
@@ -467,57 +595,68 @@ public:
     }
 
     std::vector<DumpEntry> get_all_entries() const {
-        std::shared_lock<std::shared_mutex> lock(mutex_);
         uint64_t now_steady = current_time_ms();
         uint64_t now_wall = wall_time_ms();
         std::vector<DumpEntry> result;
-        result.reserve(data_.size());
 
-        for (const auto& [k, v] : data_) {
-            if (v.expire_at != 0 && v.expire_at <= now_steady) {
-                continue;
+        // Acquire shared lock on all shards in ascending order
+        std::vector<std::shared_lock<std::shared_mutex>> locks;
+        locks.reserve(NUM_SHARDS);
+        for (const auto& shard : shards_) {
+            locks.emplace_back(shard.mutex);
+        }
+
+        for (const auto& shard : shards_) {
+            for (const auto& [k, v] : shard.data) {
+                if (v.expire_at != 0 && v.expire_at <= now_steady) {
+                    continue;
+                }
+                uint64_t expire_at_wall = 0;
+                if (v.expire_at > now_steady) {
+                    uint64_t remaining_ms = v.expire_at - now_steady;
+                    expire_at_wall = now_wall + remaining_ms;
+                }
+                result.push_back({k, v.value, expire_at_wall});
             }
-            uint64_t expire_at_wall = 0;
-            if (v.expire_at > now_steady) {
-                uint64_t remaining_ms = v.expire_at - now_steady;
-                expire_at_wall = now_wall + remaining_ms;
-            }
-            result.push_back({k, v.value, expire_at_wall});
         }
         return result;
     }
 
     void restore_entry(const std::string& key, const std::string& value, uint64_t expire_at_epoch_ms) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
+        std::unique_lock<std::shared_mutex> lock(shard.mutex);
         if (expire_at_epoch_ms == 0) {
-            data_[key] = Entry{value, 0};
-            keys_with_ttl_.erase(key);
+            shard.data[key] = Entry{value, 0};
+            shard.keys_with_ttl.erase(key);
         } else {
             uint64_t now_wall = wall_time_ms();
             if (expire_at_epoch_ms <= now_wall) {
-                data_.erase(key);
-                keys_with_ttl_.erase(key);
+                shard.data.erase(key);
+                shard.keys_with_ttl.erase(key);
             } else {
                 uint64_t remaining_ms = expire_at_epoch_ms - now_wall;
-                data_[key] = Entry{value, current_time_ms() + remaining_ms};
-                keys_with_ttl_.insert(key);
+                shard.data[key] = Entry{value, current_time_ms() + remaining_ms};
+                shard.keys_with_ttl.insert(key);
             }
         }
     }
 
 private:
     IncrStatus modify_int(const std::string& key, int64_t delta, int64_t& result_val, bool is_decrement) {
-        std::unique_lock<std::shared_mutex> lock(mutex_);
+        size_t idx = shard_index(key);
+        auto& shard = shards_[idx];
+        std::unique_lock<std::shared_mutex> lock(shard.mutex);
         uint64_t now = current_time_ms();
-        auto it = data_.find(key);
-        if (it != data_.end() && it->second.expire_at != 0 && it->second.expire_at <= now) {
-            data_.erase(it);
-            keys_with_ttl_.erase(key);
-            it = data_.end();
+        auto it = shard.data.find(key);
+        if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= now) {
+            shard.data.erase(it);
+            shard.keys_with_ttl.erase(key);
+            it = shard.data.end();
         }
 
         int64_t current_val = 0;
-        if (it != data_.end()) {
+        if (it != shard.data.end()) {
             if (!parse_int64(it->second.value, current_val)) {
                 return IncrStatus::NotAnInteger;
             }
@@ -530,10 +669,10 @@ private:
             return IncrStatus::Overflow;
         }
 
-        if (it != data_.end()) {
+        if (it != shard.data.end()) {
             it->second.value = std::to_string(new_val);
         } else {
-            data_[key] = Entry{std::to_string(new_val), 0};
+            shard.data[key] = Entry{std::to_string(new_val), 0};
         }
 
         dirty_++;
@@ -541,9 +680,17 @@ private:
         return IncrStatus::Success;
     }
 
-    mutable std::shared_mutex mutex_;
-    std::unordered_map<std::string, Entry> data_;
-    std::unordered_set<std::string> keys_with_ttl_;
+    struct alignas(64) Shard {
+        mutable std::shared_mutex mutex;
+        std::unordered_map<std::string, Entry> data;
+        std::unordered_set<std::string> keys_with_ttl;
+    };
+
+    std::array<Shard, NUM_SHARDS> shards_;
+
+    inline size_t shard_index(const std::string& key) const noexcept {
+        return std::hash<std::string>{}(key) & (NUM_SHARDS - 1);
+    }
 
     std::atomic<uint64_t> dirty_{0};
     std::atomic<bool> active_eviction_running_{false};

@@ -243,9 +243,20 @@ private:
         constexpr size_t BUFFER_SIZE = constants::CLIENT_BUFFER_SIZE;
         char buffer[BUFFER_SIZE];
         std::string client_buffer;
+        size_t read_offset = 0;
         bool authenticated = config_.password.empty();
 
         while (running_) {
+            if (read_offset > 0) {
+                if (read_offset >= client_buffer.size()) {
+                    client_buffer.clear();
+                    read_offset = 0;
+                } else if (read_offset >= BUFFER_SIZE || client_buffer.size() > BUFFER_SIZE * 4) {
+                    client_buffer.erase(0, read_offset);
+                    read_offset = 0;
+                }
+            }
+
             int bytes_read = recv(client_socket, buffer, BUFFER_SIZE, 0);
             if (bytes_read <= 0) {
                 break;
@@ -253,20 +264,25 @@ private:
 
             client_buffer.append(buffer, bytes_read);
 
-            while (!client_buffer.empty()) {
+            std::string out_batch;
+            while (read_offset < client_buffer.size()) {
                 std::vector<std::string> args;
                 size_t consumed = 0;
-                ParseStatus status = Resp::parse_command(client_buffer, args, consumed);
+                std::string_view sv(client_buffer.data() + read_offset, client_buffer.size() - read_offset);
+                ParseStatus status = Resp::parse_command(sv, args, consumed);
 
                 if (status == ParseStatus::Success) {
-                    client_buffer.erase(0, consumed);
+                    read_offset += consumed;
                     CommandResult result = command_handler_.dispatch(args, authenticated, config_.password);
                     
                     if (!result.response.empty()) {
-                        send_all(client_socket, result.response);
+                        out_batch.append(result.response);
                     }
 
                     if (result.should_close) {
+                        if (!out_batch.empty()) {
+                            send_all(client_socket, out_batch);
+                        }
                         CLOSE_SOCKET(client_socket);
                         return;
                     }
@@ -274,10 +290,15 @@ private:
                     break;
                 } else {
                     std::string err = Resp::error("Protocol error");
-                    send_all(client_socket, err);
+                    out_batch.append(err);
+                    send_all(client_socket, out_batch);
                     CLOSE_SOCKET(client_socket);
                     return;
                 }
+            }
+
+            if (!out_batch.empty()) {
+                send_all(client_socket, out_batch);
             }
         }
 

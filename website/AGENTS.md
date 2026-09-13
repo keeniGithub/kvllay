@@ -144,7 +144,7 @@ All visual sections are divided into isolated, reusable components inside `src/c
 ## Custom Hooks & Utilities
 
 ### `useGithubStars` (`src/lib/useGithubStars.ts`)
-- **Hook**: `useGithubStars(owner = "keeniGithub", repo = "kvllay")`
+- **Hook**: `useGithubStars(owner = "thekeny", repo = "kvllay")`
 - **Returns**: `{ stars: number, isLoading: boolean }`
 - **Mechanism**:
   - Checks `sessionStorage` for cached star count and timestamp.

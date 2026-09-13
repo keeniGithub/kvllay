@@ -5,7 +5,7 @@
   <p>In-memory key-value store</p>
 
   <p>
-    <a href="https://github.com/keeniGithub/kvllay/releases">Release</a> •
+    <a href="https://github.com/thekeny/kvllay/releases">Release</a> •
     <a href="docs/ru.md">Русская документация</a> •
     <a href="docs/en.md">English Documentation</a>
   </p>
@@ -54,7 +54,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
 
 ## Download Standalone Binary
 
-You can download ready-to-run standalone binaries from [Releases](https://github.com/keeniGithub/kvllay/releases) (no dependencies required):
+You can download ready-to-run standalone binaries from [Releases](https://github.com/thekeny/kvllay/releases) (no dependencies required):
 - **Linux (x86_64)**: `chmod +x kvllay-linux-x86_64 && ./kvllay-linux-x86_64`
 - **Windows (x86_64)**: `.\kvllay-windows-x86_64.exe`
 
@@ -129,17 +129,20 @@ redis-cli -p 6379 -a "mypassword"
 
 ## Benchmark Kvllay vs Redis
 
-| Workload | kvllay v1.0.0 | Redis v7.x | Comparison |
+| Workload | kvllay v1.0.0 | Redis v8.x (8.8.0) | Comparison |
 | :--- | :---: | :---: | :--- |
-| **Single-Client: SET** | **62,235 RPS** | 52,815 RPS | **kvllay +17.8% faster** |
-| **Single-Client: GET** | **68,336 RPS** | 59,947 RPS | **kvllay +14.0% faster** |
-| **Parallel 8-Thread: SET** | **125,341 RPS** | 127,723 RPS | On par (~98% Redis) |
-| **Parallel 8-Thread: GET** | **122,973 RPS** | 118,350 RPS | **kvllay +3.9% faster** |
-| **redis-benchmark (50 clients): GET** | **128,866 RPS** | 126,100 RPS | **kvllay +2.2% faster** |
-| **Latency p50** | **0.044 ms** | 0.048 ms | **kvllay 8% lower** |
-| **Idle RAM** | **~2.4 MB** | ~11.5 MB | **kvllay 4.8x lighter** |
-| **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay 90x smaller** |
-| **Cold Start** | **< 2 ms** | ~35 ms | **kvllay 15x faster** |
+| **Single-Client: SET** | **78,077 RPS** | 69,913 RPS | **kvllay +11.7% faster** |
+| **Single-Client: GET** | **82,471 RPS** | 70,437 RPS | **kvllay +17.1% faster** |
+| **Single-Client: INCR** | **84,718 RPS** | 70,422 RPS | **kvllay +20.3% faster** |
+| **Single-Client: MSET (5 keys)** | **78,665 RPS** | 59,143 RPS | **kvllay +33.0% faster** |
+| **Parallel 8-Thread: SET** | **120,268 RPS** | 119,629 RPS | **kvllay ahead (32 shards)** |
+| **Concurrent 50 Clients: GET** | **136,799 RPS** | 131,752 RPS | **kvllay +3.8% faster** |
+| **Concurrent 50 Clients: INCR** | **139,860 RPS** | 136,799 RPS | **kvllay +2.2% faster** |
+| **Latency p50 (Parallel 8-Thread)** | **0.047 ms (47 μs)** | 0.052 ms (52 μs) | **kvllay 10% lower latency** |
+| **Idle RAM** | **~4.1 MB** | ~15.2 MB | **kvllay 3.7x lighter** |
+| **50,000 Keys RAM** | **~11.4 MB** | ~20.0 MB | **kvllay 43% less RAM** |
+| **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay 87x smaller** |
+| **Cold Start** | **~3.2 ms** | ~7.6 ms | **kvllay 2.4x faster** |
 
 ![Throughput: Single-Client RPS](docs/images/benchmark_single_client.png)
 

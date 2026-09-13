@@ -42,16 +42,17 @@
 
 ### 1. Storage Engine (`include/kvllay/store.hpp`)
 - **Class**: `kvllay::Store`
-- **Underlying Storage**: `std::unordered_map<std::string, std::string> data_`
-- **Synchronization**: `mutable std::shared_mutex mutex_`
-  - Read operations (`get`, `exists`, `keys`, `size`) acquire `std::shared_lock<std::shared_mutex>`.
-  - Write operations (`set`, `del`, `flushdb`) acquire `std::unique_lock<std::shared_mutex>`.
+- **Underlying Storage**: 32-way sharded storage (`std::array<Shard, 32> shards_`) with `hash(key) & 31` dispatch.
+- **Synchronization & Lock Striping**:
+  - Each `Shard` is 64-byte aligned (`alignas(64)`) to eliminate CPU cache-line False Sharing.
+  - Each shard has its own independent `mutable std::shared_mutex mutex`.
+  - Single-key read operations (`get`, `ttl`) acquire `std::shared_lock` on only their specific shard.
+  - Single-key write operations (`set`, `expire`, `incr`) acquire `std::unique_lock` on only their specific shard without blocking other shards.
+  - Multi-key operations (`mget`, `mset`, `del`, `exists`) sort target shard indices in ascending order to guarantee deadlock-free multi-lock acquisition.
 - **Pattern Matching (`keys`)**:
-  - `*`: returns all keys.
-  - Prefix matching: `key*` -> `rfind(prefix, 0) == 0`.
-  - Suffix matching: `*key` -> tail substring comparison.
-  - Substring matching: `*key*` -> `find(substr) != std::string::npos`.
-  - Exact match fallback.
+  - `*`: scans all shards in parallel/sequence.
+  - Exact match: direct single-shard lookup (`shard_index(key)`).
+  - Prefix/suffix/substring: scans shards under shared read lock.
 - **Copy Semantics**: Non-copyable (copy constructor and copy assignment are deleted).
 
 ### 2. Protocol Engine (`include/kvllay/resp.hpp`)
