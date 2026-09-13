@@ -99,6 +99,15 @@ public:
         return true;
     }
 
+    bool mset(const std::vector<std::pair<std::string, std::string>>& kvs) {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        for (const auto& [key, value] : kvs) {
+            data_[key] = Entry{value, 0};
+            keys_with_ttl_.erase(key);
+        }
+        return true;
+    }
+
     bool setex(const std::string& key, uint64_t ttl_ms, const std::string& value) {
         std::unique_lock<std::shared_mutex> lock(mutex_);
         uint64_t expire_at = current_time_ms() + ttl_ms;
@@ -131,6 +140,42 @@ public:
             return it->second.value;
         }
         return std::nullopt;
+    }
+
+    std::vector<std::optional<std::string>> mget(const std::vector<std::string>& keys) {
+        uint64_t now = current_time_ms();
+        std::vector<std::optional<std::string>> result;
+        result.reserve(keys.size());
+        std::vector<std::string> expired_keys;
+
+        {
+            std::shared_lock<std::shared_mutex> lock(mutex_);
+            for (const auto& key : keys) {
+                auto it = data_.find(key);
+                if (it == data_.end()) {
+                    result.push_back(std::nullopt);
+                } else if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+                    result.push_back(std::nullopt);
+                    expired_keys.push_back(key);
+                } else {
+                    result.push_back(it->second.value);
+                }
+            }
+        }
+
+        if (!expired_keys.empty()) {
+            std::unique_lock<std::shared_mutex> lock(mutex_);
+            uint64_t cur_now = current_time_ms();
+            for (const auto& key : expired_keys) {
+                auto it = data_.find(key);
+                if (it != data_.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
+                    data_.erase(it);
+                    keys_with_ttl_.erase(key);
+                }
+            }
+        }
+
+        return result;
     }
 
     size_t del(const std::vector<std::string>& keys) {

@@ -5,6 +5,7 @@
 
 #include <string>
 #include <vector>
+#include <optional>
 #include <sstream>
 #include <cctype>
 #include <algorithm>
@@ -50,6 +51,18 @@ public:
         std::string res = "*" + std::to_string(items.size()) + "\r\n";
         for (const auto& item : items) {
             res += bulk_string(item);
+        }
+        return res;
+    }
+
+    static std::string array_of_bulk(const std::vector<std::optional<std::string>>& items) {
+        std::string res = "*" + std::to_string(items.size()) + "\r\n";
+        for (const auto& item : items) {
+            if (item.has_value()) {
+                res += bulk_string(*item);
+            } else {
+                res += null_bulk_string();
+            }
         }
         return res;
     }

@@ -109,6 +109,8 @@ All commands are case-insensitive (`get`, `Get`, and `GET` are equivalent).
 | `DEL key [key ...]` | Removes one or more keys | `DEL key1 key2` | `:2\r\n` (number of deleted keys) |
 | `EXISTS key [key ...]` | Checks existence of keys | `EXISTS key1 key2` | `:1\r\n` (number of existing keys) |
 | `KEYS [pattern]` | Finds keys matching pattern (`*`, `prefix*`, `*suffix`, `*sub*`) | `KEYS user*` | RESP2 array containing matching keys |
+| `MSET key val [k v ...]`| Atomically sets multiple key-value pairs in one operation | `MSET k1 v1 k2 v2` | `+OK\r\n` |
+| `MGET key [key ...]` | Retrieves multiple keys in a single network roundtrip | `MGET k1 k2 k3` | RESP2 array of strings and `nil` (`$-1\r\n`) |
 
 ### 3.3 TTL & Expiration Management
 

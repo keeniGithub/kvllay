@@ -85,6 +85,10 @@ public:
             return handle_incrby(args);
         } else if (cmd == "DECRBY") {
             return handle_decrby(args);
+        } else if (cmd == "MGET") {
+            return handle_mget(args);
+        } else if (cmd == "MSET") {
+            return handle_mset(args);
         }
 
         return {Resp::error("unknown command '" + args[0] + "'"), false};
@@ -332,6 +336,28 @@ private:
         int64_t result = 0;
         auto status = store_.decrby(args[1], delta, result);
         return format_incr_result(status, result);
+    }
+
+    CommandResult handle_mget(const std::vector<std::string>& args) {
+        if (args.size() < 2) {
+            return {Resp::error("wrong number of arguments for 'mget' command"), false};
+        }
+        std::vector<std::string> keys(args.begin() + 1, args.end());
+        auto values = store_.mget(keys);
+        return {Resp::array_of_bulk(values), false};
+    }
+
+    CommandResult handle_mset(const std::vector<std::string>& args) {
+        if (args.size() < 3 || (args.size() - 1) % 2 != 0) {
+            return {Resp::error("wrong number of arguments for 'mset' command"), false};
+        }
+        std::vector<std::pair<std::string, std::string>> kvs;
+        kvs.reserve((args.size() - 1) / 2);
+        for (size_t i = 1; i < args.size(); i += 2) {
+            kvs.emplace_back(args[i], args[i + 1]);
+        }
+        store_.mset(kvs);
+        return {Resp::simple_string("OK"), false};
     }
 };
 

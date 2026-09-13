@@ -22,6 +22,8 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `PING [message]`
   - `SET key value`
   - `GET key`
+  - `MSET key value [key value ...]`
+  - `MGET key [key ...]`
   - `DEL key [key ...]`
   - `EXISTS key [key ...]`
   - `KEYS [pattern]`

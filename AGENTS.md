@@ -100,6 +100,8 @@
   - `DECR key`: Atomically decrements integer value by 1.
   - `INCRBY key increment`: Atomically increments integer value by given delta.
   - `DECRBY key decrement`: Atomically decrements integer value by given delta.
+  - `MGET key [key ...]`: Atomically retrieves multiple keys in a single roundtrip, returning array of bulk strings or nulls (`$-1`).
+  - `MSET key value [key value ...]`: Atomically sets multiple key-value pairs in a single operation, clearing any existing TTLs.
 
 ### 4. Networking & Server (`include/kvllay/server.hpp`)
 - **Class**: `kvllay::Server`
