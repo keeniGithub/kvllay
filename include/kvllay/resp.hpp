@@ -39,7 +39,7 @@ public:
     }
 
     static std::string error(const std::string& err) {
-        if (err.rfind("ERR ", 0) == 0 || err.rfind("WRONGTYPE ", 0) == 0) {
+        if (err.rfind("ERR ", 0) == 0 || err.rfind("WRONGTYPE ", 0) == 0 || err.rfind("OOM ", 0) == 0) {
             return "-" + err + "\r\n";
         }
         return "-ERR " + err + "\r\n";

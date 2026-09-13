@@ -185,7 +185,9 @@ flowchart TD
 | `DBSIZE` | Возвращает общее количество активных ключей | `DBSIZE` | `:42\r\n` |
 | `FLUSHDB` / `FLUSHALL` | Полная очистка всех ключей и таймеров | `FLUSHDB` | `+OK\r\n` |
 | `COMMAND` / `COMMAND DOCS`| Хэндшейк совместимости с `redis-cli` | `COMMAND` | `*0\r\n` (пустой массив) |
-| `INFO` | Статистика сервера (версия, uptime, ключи, персистентность) | `INFO` | Bulk string со служебной информацией |
+| `INFO [section]` | Статистика сервера (`server`, `memory`, `persistence`, `keyspace`) | `INFO` / `INFO memory` | Bulk string со служебной информацией |
+| `CONFIG GET param` | Получение текущих параметров конфигурации (`maxmemory`, `maxmemory-policy`, `*`) | `CONFIG GET maxmemory` | Массив параметров и значений |
+| `CONFIG SET param val` | Динамическое изменение параметров (`maxmemory`, `maxmemory-policy`) на лету | `CONFIG SET maxmemory 256mb` | `+OK\r\n` |
 
 ### 3.7 Персистентность и снапшоты (Snapshots & AOF)
 
@@ -207,6 +209,33 @@ kvllay поддерживает два дополняющих друг друг�
 | `BGSAVE` | Асинхронный сброс снапшота в фоновом потоке без блокировки клиентов | `BGSAVE` | `+Background saving started\r\n` |
 | `LASTSAVE` | Возвращает UNIX-timestamp (секунды) последнего успешного сохранения снапшота | `LASTSAVE` | `:1694635200\r\n` |
 | `BGREWRITEAOF` | Запускает фоновую перезапись и сжатие журнала AOF из текущего состояния памяти | `BGREWRITEAOF` | `+Background append only file rewriting started\r\n` |
+
+### 3.8 Лимит памяти и защита от OOM (Memory Limits & Eviction)
+
+`kvllay` обеспечивает непрерывный учет потребления памяти в реальном времени и предотвращает аварийное завершение процесса операционной системой (OOM Killer):
+
+- **Настройка лимита**: задается флагом запуска `--maxmemory <bytes|mb|gb>` (например, `--maxmemory 512mb`) или на лету через `CONFIG SET maxmemory 1gb`.
+- **Политики вытеснения (`maxmemory-policy`)**:
+  - `noeviction` (по умолчанию) — при достижении лимита команды записи, требующие выделения памяти (`SET`, `SETEX`, `MSET`, `LPUSH`, `RPUSH`, `INCR`), отклоняются стандартной ошибкой Redis:
+    ```
+    -OOM command not allowed when used memory > 'maxmemory'.
+    ```
+    Команды чтения (`GET`, `MGET`, `LLEN`, `LRANGE`) и команды освобождения памяти (`DEL`, `FLUSHDB`, `LPOP`, `RPOP`) продолжают работать в штатном режиме.
+  - `allkeys-lru` — вероятностное вытеснение наименее востребованных ключей (LRU) по всей базе данных. Ключи, к которым недавно обращались, защищены от удаления.
+  - `volatile-lru` — LRU-вытеснение только среди ключей с заданным временем жизни (TTL). Ключи без TTL гарантированно сохраняются.
+  - `allkeys-random` — случайный выбор и удаление ключей для освобождения места.
+  - `volatile-ttl` — удаление ключей с наименьшим оставшимся TTL.
+- **Мониторинг памяти**:
+  Секция `# Memory` в выводе команды `INFO` отображает ключевые метрики:
+  ```text
+  # Memory
+  used_memory:10485760
+  used_memory_human:10.00M
+  maxmemory:67108864
+  maxmemory_human:64.00M
+  maxmemory_policy:allkeys-lru
+  evicted_keys:142
+  ```
 
 ---
 
@@ -266,6 +295,8 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
   --aof [файл]                   Включить Append-Only Log персистентность (по умолчанию: kvllay.aof)
   --no-aof                       Явно отключить Append-Only Log
   --appendfsync <политика>       Политика fsync для AOF: always, everysec, no (по умолчанию: everysec)
+  --maxmemory <байт|mb|gb>       Максимальный лимит памяти (например, 512mb, 1gb, 0=без лимита)
+  --maxmemory-policy <политика>  Политика вытеснения: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl
   -v, --version                  Отображение текущей версии приложения
   --help                         Показать справку по использованию
 ```
@@ -277,6 +308,9 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
 
 # Запуск с требованием авторизации
 ./build/kvllay -p 6379 -a "StrongSecretPassword123"
+
+# Запуск с ограничением памяти 256 МБ и вытеснением наименее используемых ключей
+./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
 
 # Запуск с периодическими снапшотами (каждые 60 секунд)
 ./build/kvllay -p 6379 --save 60

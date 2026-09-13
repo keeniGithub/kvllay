@@ -48,7 +48,6 @@ struct ServerConfig {
     std::string host = constants::DEFAULT_HOST;
     std::string password = "";
 
-    // Persistence configuration
     bool snapshot_enabled = true;
     std::string snapshot_path = constants::DEFAULT_SNAPSHOT_FILE;
     uint64_t save_interval_secs = constants::DEFAULT_SAVE_INTERVAL_SECS;
@@ -57,6 +56,9 @@ struct ServerConfig {
     bool aof_enabled = false;
     std::string aof_path = constants::DEFAULT_AOF_FILE;
     FsyncPolicy aof_fsync_policy = FsyncPolicy::EverySec;
+
+    size_t maxmemory = constants::DEFAULT_MAXMEMORY;
+    constants::MaxmemoryPolicy maxmemory_policy = constants::MaxmemoryPolicy::NoEviction;
 };
 
 class Server {
@@ -68,6 +70,7 @@ public:
         : config_(std::move(config)),
           running_(false),
           server_socket_(INVALID_SOCKET),
+          store_(config_.maxmemory, config_.maxmemory_policy),
           snapshot_mgr_(config_.snapshot_path, config_.save_interval_secs, config_.save_changes),
           aof_mgr_(config_.aof_path, config_.aof_enabled, config_.aof_fsync_policy),
           command_handler_(store_, config_.snapshot_enabled ? &snapshot_mgr_ : nullptr, config_.aof_enabled ? &aof_mgr_ : nullptr) {
@@ -97,6 +100,11 @@ public:
                 std::cout << "[kvllay] AOF persistence enabled (" << config_.aof_path << ", fsync: " 
                           << fsync_policy_to_string(config_.aof_fsync_policy) << ")" << std::endl;
             }
+        }
+
+        if (config_.maxmemory > 0) {
+            std::cout << "[kvllay] Maxmemory limit: " << constants::format_memory_human(config_.maxmemory)
+                      << " (policy: " << constants::maxmemory_policy_to_string(config_.maxmemory_policy) << ")" << std::endl;
         }
 
         if (config_.snapshot_enabled && config_.save_interval_secs > 0) {
@@ -320,6 +328,6 @@ private:
     }
 };
 
-} // namespace kvllay
+}
 
 #endif // KVLLAY_SERVER_HPP

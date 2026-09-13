@@ -185,7 +185,9 @@ Lists in `kvllay` are implemented using a cache-friendly double-ended queue buff
 | `DBSIZE` | Total count of active keys | `DBSIZE` | `:42\r\n` |
 | `FLUSHDB` / `FLUSHALL` | Clears all keys and timers | `FLUSHDB` | `+OK\r\n` |
 | `COMMAND` / `COMMAND DOCS`| Handshake compatibility for `redis-cli` | `COMMAND` | `*0\r\n` (empty array) |
-| `INFO` | Server statistics (version, uptime, keys, persistence) | `INFO` | Bulk string with server metrics |
+| `INFO [section]` | Server statistics (`server`, `memory`, `persistence`, `keyspace`) | `INFO` / `INFO memory` | Bulk string with server metrics |
+| `CONFIG GET param` | Retrieves runtime configuration parameters (`maxmemory`, `maxmemory-policy`, `*`) | `CONFIG GET maxmemory` | RESP array with parameter and value |
+| `CONFIG SET param val` | Dynamically updates runtime configuration (`maxmemory`, `maxmemory-policy`) | `CONFIG SET maxmemory 256mb` | `+OK\r\n` |
 
 ### 3.7 Persistence & Snapshots (Snapshots & AOF)
 
@@ -207,6 +209,33 @@ kvllay provides two complementary, high-performance data safety mechanisms desig
 | `BGSAVE` | Non-blocking snapshot in background thread without `fork()` | `BGSAVE` | `+Background saving started\r\n` |
 | `LASTSAVE` | Returns UNIX epoch timestamp (seconds) of last successful save | `LASTSAVE` | `:1694635200\r\n` |
 | `BGREWRITEAOF` | Asynchronously rewrites and compacts AOF log from current memory state | `BGREWRITEAOF` | `+Background append only file rewriting started\r\n` |
+
+### 3.8 Memory Limits & OOM Protection (Eviction Policies)
+
+`kvllay` tracks exact memory usage in real time to prevent the process from being terminated by the operating system OOM killer:
+
+- **Configuring Limits**: Specified via `--maxmemory <bytes|mb|gb>` at startup (e.g., `--maxmemory 512mb`, `--maxmemory 1gb`) or dynamically via `CONFIG SET maxmemory 256mb`.
+- **Eviction Policies (`maxmemory-policy`)**:
+  - `noeviction` (default) — Write commands allocating memory (`SET`, `SETEX`, `MSET`, `LPUSH`, `RPUSH`, `INCR`) are rejected with the standard Redis error:
+    ```
+    -OOM command not allowed when used memory > 'maxmemory'.
+    ```
+    Read commands (`GET`, `MGET`, `LLEN`, `LRANGE`) and memory-reclaiming commands (`DEL`, `FLUSHDB`, `LPOP`, `RPOP`) remain fully functional.
+  - `allkeys-lru` — Evicts the least recently used (LRU) keys across all shards using high-resolution monotonic timestamps.
+  - `volatile-lru` — LRU eviction restricted to keys with an active TTL (keys without expiration are never evicted).
+  - `allkeys-random` — Random key eviction to reclaim memory.
+  - `volatile-ttl` — Evicts keys with the shortest remaining TTL.
+- **Memory Diagnostics**:
+  The `# Memory` section in `INFO` displays detailed metrics:
+  ```text
+  # Memory
+  used_memory:10485760
+  used_memory_human:10.00M
+  maxmemory:67108864
+  maxmemory_human:64.00M
+  maxmemory_policy:allkeys-lru
+  evicted_keys:142
+  ```
 
 ---
 
@@ -266,6 +295,8 @@ Options:
   --aof [file]                   Enable Append-Only Log persistence (default: kvllay.aof)
   --no-aof                       Explicitly disable Append-Only Log
   --appendfsync <policy>         AOF fsync policy: always, everysec, no (default: everysec)
+  --maxmemory <bytes|mb|gb>      Max memory limit (e.g. 512mb, 1gb, 0=unlimited)
+  --maxmemory-policy <policy>    Eviction policy: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl
   -v, --version                  Display version information
   --help                         Display this help message
 ```
@@ -277,6 +308,9 @@ Examples:
 
 # Enable password protection
 ./build/kvllay -p 6379 -a "MyStrongPassword"
+
+# Run with 256MB memory limit and LRU eviction
+./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
 
 # Auto-save snapshot every 60 seconds
 ./build/kvllay -p 6379 --save 60

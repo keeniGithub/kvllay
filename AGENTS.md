@@ -113,6 +113,8 @@
   - `LRANGE key start stop`: Returns elements from start to stop (supports negative indexes).
   - `LINDEX key index`: Returns element by 0-based or negative index.
   - `TYPE key`: Returns type of key (`string`, `list`, or `none`).
+  - `CONFIG GET parameter`: Retrieves configuration parameter (`maxmemory`, `maxmemory-policy`, or `*`).
+  - `CONFIG SET parameter value`: Dynamically sets configuration (`maxmemory`, `maxmemory-policy`).
   - `SAVE`: Synchronously dumps memory state to binary snapshot file (`dump.kvl`).
   - `BGSAVE`: Asynchronously dumps memory state to snapshot in a background thread without `fork()`.
   - `LASTSAVE`: Returns UNIX epoch timestamp of the most recent successful snapshot save.
@@ -140,7 +142,7 @@
 
 ### 6. Networking & Server (`include/kvllay/server.hpp`)
 - **Class**: `kvllay::Server`
-- **Configuration**: `kvllay::ServerConfig` encapsulates port, host, password, snapshot options, and AOF options.
+- **Configuration**: `kvllay::ServerConfig` encapsulates port, host, password, snapshot options, AOF options, and memory limits.
 - **Platform Abstraction**:
   - Windows: Uses `winsock2.h`, `ws2tcpip.h`, `SOCKET`, `WSAStartup`/`WSACleanup`, linked with `-lws2_32`.
   - POSIX / Linux: Uses standard socket API (`sys/socket.h`, `netinet/in.h`, `arpa/inet.h`, `unistd.h`).
@@ -167,6 +169,8 @@
   - `--aof [file]`: Enables Append-Only Log persistence (default: `kvllay.aof`).
   - `--no-aof`: Explicitly disables AOF persistence.
   - `--appendfsync <always|everysec|no>`: AOF fsync policy (default: `everysec`).
+  - `--maxmemory <bytes|mb>`: Maximum memory limit (default: 0 = unlimited).
+  - `--maxmemory-policy <policy>`: Eviction policy (`noeviction`, `allkeys-lru`, `volatile-lru`, `allkeys-random`, `volatile-ttl`).
   - Positional fallback: `kvllay [port] [host] [password]`.
   - `--help`: Prints usage options.
 - Instantiates `kvllay::Server` and executes `server.run()`.

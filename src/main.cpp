@@ -20,12 +20,15 @@ void print_help(const char* prog) {
               << "  --no-snapshot                  Disable snapshot saving\n"
               << "  --aof [file]                   Enable Append-Only Log persistence (default: " << kvllay::constants::DEFAULT_AOF_FILE << ")\n"
               << "  --appendfsync <policy>         AOF fsync policy: always, everysec, no (default: everysec)\n"
+              << "  --maxmemory <bytes|mb>         Max memory limit (e.g. 512mb, 1gb, 0=unlimited)\n"
+              << "  --maxmemory-policy <policy>    Eviction policy: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl\n"
               << "  -v, --version                  Display version information\n"
               << "  --help                         Display this help message\n\n"
               << "Examples:\n"
               << "  " << prog << " -p 6379\n"
               << "  " << prog << " -p 6379 --save 60\n"
               << "  " << prog << " -p 6379 --aof kvllay.aof --appendfsync everysec\n"
+              << "  " << prog << " -p 6379 --maxmemory 100mb --maxmemory-policy allkeys-lru\n"
               << "  " << prog << " -p 6379 --snapshot dump.kvl --aof\n";
 }
 
@@ -70,6 +73,16 @@ int main(int argc, char* argv[]) {
             config.aof_enabled = false;
         } else if (arg == "--appendfsync" && i + 1 < argc) {
             config.aof_fsync_policy = kvllay::parse_fsync_policy(argv[++i]);
+        } else if (arg == "--maxmemory" && i + 1 < argc) {
+            if (!kvllay::constants::parse_memory_string(argv[++i], config.maxmemory)) {
+                std::cerr << "Invalid maxmemory value: " << argv[i] << "\n";
+                return 1;
+            }
+        } else if (arg == "--maxmemory-policy" && i + 1 < argc) {
+            if (!kvllay::constants::parse_maxmemory_policy(argv[++i], config.maxmemory_policy)) {
+                std::cerr << "Invalid maxmemory policy: " << argv[i] << "\n";
+                return 1;
+            }
         } else if (arg.rfind("-", 0) != 0) {
             positional.push_back(arg);
         } else {

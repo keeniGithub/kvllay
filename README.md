@@ -100,6 +100,9 @@ make run
 # Run with both snapshots and AOF
 ./build/kvllay -p 6379 --snapshot dump.kvl --aof
 
+# Run with memory limit and LRU eviction policy
+./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
 # View all options
 ./build/kvllay --help
 ```

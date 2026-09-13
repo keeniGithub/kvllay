@@ -61,6 +61,16 @@ public:
         CommandResult result;
         bool is_mutating = false;
 
+        bool is_allocating = iequals(cmd, "SET") || iequals(cmd, "SETEX") || iequals(cmd, "MSET") ||
+                             iequals(cmd, "LPUSH") || iequals(cmd, "RPUSH") ||
+                             iequals(cmd, "INCR") || iequals(cmd, "DECR") ||
+                             iequals(cmd, "INCRBY") || iequals(cmd, "DECRBY");
+        if (is_allocating) {
+            if (!store_.check_memory_and_evict()) {
+                return {Resp::error("OOM command not allowed when used memory > 'maxmemory'."), false};
+            }
+        }
+
         if (iequals(cmd, "GET")) {
             result = handle_get(args);
         } else if (iequals(cmd, "SET")) {
@@ -112,6 +122,8 @@ public:
             result = handle_dbsize(args);
         } else if (iequals(cmd, "COMMAND")) {
             result = handle_command(args);
+        } else if (iequals(cmd, "CONFIG")) {
+            result = handle_config(args);
         } else if (iequals(cmd, "INFO")) {
             result = handle_info(args);
         } else if (iequals(cmd, "FLUSHDB") || iequals(cmd, "FLUSHALL")) {
@@ -263,25 +275,95 @@ private:
         return {Resp::empty_array(), false};
     }
 
-    CommandResult handle_info(const std::vector<std::string>&) {
+    CommandResult handle_config(const std::vector<std::string>& args) {
+        if (args.size() < 2) {
+            return {Resp::error("wrong number of arguments for 'config' command"), false};
+        }
+        if (iequals(args[1], "GET")) {
+            if (args.size() != 3) {
+                return {Resp::error("wrong number of arguments for 'config|get' command"), false};
+            }
+            std::string param = args[2];
+            std::transform(param.begin(), param.end(), param.begin(), ::tolower);
+            if (param == "maxmemory") {
+                return {Resp::array(std::vector<std::string>{"maxmemory", std::to_string(store_.maxmemory())}), false};
+            } else if (param == "maxmemory-policy") {
+                return {Resp::array(std::vector<std::string>{"maxmemory-policy", constants::maxmemory_policy_to_string(store_.maxmemory_policy())}), false};
+            } else if (param == "*") {
+                return {Resp::array(std::vector<std::string>{
+                    "maxmemory", std::to_string(store_.maxmemory()),
+                    "maxmemory-policy", constants::maxmemory_policy_to_string(store_.maxmemory_policy())
+                }), false};
+            } else {
+                return {Resp::empty_array(), false};
+            }
+        } else if (iequals(args[1], "SET")) {
+            if (args.size() != 4) {
+                return {Resp::error("wrong number of arguments for 'config|set' command"), false};
+            }
+            std::string param = args[2];
+            std::transform(param.begin(), param.end(), param.begin(), ::tolower);
+            if (param == "maxmemory") {
+                size_t bytes = 0;
+                if (!constants::parse_memory_string(args[3], bytes)) {
+                    return {Resp::error("argument must be an integer or memory string (e.g. 100mb)"), false};
+                }
+                store_.set_maxmemory(bytes);
+                return {Resp::ok(), false};
+            } else if (param == "maxmemory-policy") {
+                constants::MaxmemoryPolicy policy;
+                if (!constants::parse_maxmemory_policy(args[3], policy)) {
+                    return {Resp::error("invalid maxmemory policy"), false};
+                }
+                store_.set_maxmemory_policy(policy);
+                return {Resp::ok(), false};
+            } else {
+                return {Resp::error("Unsupported CONFIG parameter: " + args[2]), false};
+            }
+        } else if (iequals(args[1], "RESETSTAT")) {
+            return {Resp::ok(), false};
+        }
+        return {Resp::error("unknown subcommand '" + args[1] + "' for 'CONFIG'"), false};
+    }
+
+    CommandResult handle_info(const std::vector<std::string>& args) {
         auto now = std::chrono::steady_clock::now();
         auto uptime = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
 
+        bool all = (args.size() <= 1);
+        std::string section = all ? "" : args[1];
+        std::transform(section.begin(), section.end(), section.begin(), ::tolower);
+
         std::string info;
-        info += "# Server\r\n";
-        info += "redis_version:" + constants::REDIS_VERSION_STRING + "\r\n";
-        info += "kvllay_version:" + std::string(constants::VERSION) + "\r\n";
-        info += "uptime_in_seconds:" + std::to_string(uptime) + "\r\n";
-        info += "# Persistence\r\n";
-        info += "loading:0\r\n";
-        info += "rdb_changes_since_last_save:" + std::to_string(store_.dirty_count()) + "\r\n";
-        info += "rdb_bgsave_in_progress:" + std::to_string(snapshot_mgr_ && snapshot_mgr_->is_saving() ? 1 : 0) + "\r\n";
-        info += "rdb_last_save_time:" + std::to_string(snapshot_mgr_ ? snapshot_mgr_->last_save_time() : 0) + "\r\n";
-        info += "rdb_last_bgsave_status:ok\r\n";
-        info += "aof_enabled:" + std::to_string(aof_mgr_ && aof_mgr_->is_enabled() ? 1 : 0) + "\r\n";
-        info += "aof_rewrite_in_progress:" + std::to_string(aof_mgr_ && aof_mgr_->is_rewriting() ? 1 : 0) + "\r\n";
-        info += "# Keyspace\r\n";
-        info += "db0:keys=" + std::to_string(store_.size()) + ",expires=" + std::to_string(store_.expires_size()) + "\r\n";
+        if (all || section == "server" || section == "default") {
+            info += "# Server\r\n";
+            info += "redis_version:" + constants::REDIS_VERSION_STRING + "\r\n";
+            info += "kvllay_version:" + std::string(constants::VERSION) + "\r\n";
+            info += "uptime_in_seconds:" + std::to_string(uptime) + "\r\n";
+        }
+        if (all || section == "memory" || section == "default") {
+            info += "# Memory\r\n";
+            info += "used_memory:" + std::to_string(store_.used_memory()) + "\r\n";
+            info += "used_memory_human:" + constants::format_memory_human(store_.used_memory()) + "\r\n";
+            info += "maxmemory:" + std::to_string(store_.maxmemory()) + "\r\n";
+            info += "maxmemory_human:" + constants::format_memory_human(store_.maxmemory()) + "\r\n";
+            info += "maxmemory_policy:" + constants::maxmemory_policy_to_string(store_.maxmemory_policy()) + "\r\n";
+            info += "evicted_keys:" + std::to_string(store_.evicted_keys_count()) + "\r\n";
+        }
+        if (all || section == "persistence" || section == "default") {
+            info += "# Persistence\r\n";
+            info += "loading:0\r\n";
+            info += "rdb_changes_since_last_save:" + std::to_string(store_.dirty_count()) + "\r\n";
+            info += "rdb_bgsave_in_progress:" + std::to_string(snapshot_mgr_ && snapshot_mgr_->is_saving() ? 1 : 0) + "\r\n";
+            info += "rdb_last_save_time:" + std::to_string(snapshot_mgr_ ? snapshot_mgr_->last_save_time() : 0) + "\r\n";
+            info += "rdb_last_bgsave_status:ok\r\n";
+            info += "aof_enabled:" + std::to_string(aof_mgr_ && aof_mgr_->is_enabled() ? 1 : 0) + "\r\n";
+            info += "aof_rewrite_in_progress:" + std::to_string(aof_mgr_ && aof_mgr_->is_rewriting() ? 1 : 0) + "\r\n";
+        }
+        if (all || section == "keyspace" || section == "default") {
+            info += "# Keyspace\r\n";
+            info += "db0:keys=" + std::to_string(store_.size()) + ",expires=" + std::to_string(store_.expires_size()) + "\r\n";
+        }
 
         return {Resp::bulk_string(info), false};
     }

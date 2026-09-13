@@ -128,7 +128,6 @@ public:
             return false;
         }
 
-        // Capture in-memory snapshot quickly under shared lock
         auto entries = store.get_all_entries();
 
         std::thread([this, entries = std::move(entries), target]() mutable {
@@ -147,12 +146,11 @@ public:
             return false;
         }
 
-        // Get file size
         fseek(fp, 0, SEEK_END);
         long file_size = ftell(fp);
         fseek(fp, 0, SEEK_SET);
 
-        if (file_size < 28) { // 8 magic + 8 timestamp + 8 count + 4 crc
+        if (file_size < 28) {
             fclose(fp);
             return false;
         }
@@ -165,14 +163,12 @@ public:
             return false;
         }
 
-        // Verify magic header
         bool is_v1 = (std::memcmp(buffer.data(), MAGIC, sizeof(MAGIC)) == 0);
         bool is_v2 = (std::memcmp(buffer.data(), MAGIC2, sizeof(MAGIC2)) == 0);
         if (!is_v1 && !is_v2) {
             return false;
         }
 
-        // Verify CRC32
         size_t data_len = buffer.size() - sizeof(uint32_t);
         uint32_t computed_crc = Crc32::update(0, buffer.data(), data_len);
 
@@ -184,7 +180,6 @@ public:
             return false;
         }
 
-        // Parse content
         size_t offset = sizeof(MAGIC);
 
         uint64_t timestamp = 0;
@@ -223,7 +218,6 @@ public:
                 store.restore_string_entry(key, val, expire_at);
             }
         } else {
-            // V2 format: supports string and list entries
             for (uint64_t i = 0; i < count; ++i) {
                 if (offset + sizeof(uint8_t) > data_len) return false;
                 uint8_t entry_type = buffer[offset++];
@@ -339,7 +333,6 @@ private:
             return false;
         }
 
-        // Buffer for high-performance sequential I/O
         constexpr size_t BUF_SIZE = 65536;
         std::vector<char> io_buffer(BUF_SIZE);
         setvbuf(fp, io_buffer.data(), _IOFBF, BUF_SIZE);
@@ -354,21 +347,18 @@ private:
             return true;
         };
 
-        // 1. Magic header
         if (!write_data(MAGIC2, sizeof(MAGIC2))) {
             fclose(fp);
             remove(tmp_path.c_str());
             return false;
         }
 
-        // 2. Epoch timestamp
         if (!write_data(&now_epoch, sizeof(now_epoch))) {
             fclose(fp);
             remove(tmp_path.c_str());
             return false;
         }
 
-        // 3. Entry count
         uint64_t count = entries.size();
         if (!write_data(&count, sizeof(count))) {
             fclose(fp);
@@ -376,7 +366,6 @@ private:
             return false;
         }
 
-        // 4. Entries
         for (const auto& entry : entries) {
             uint8_t type = static_cast<uint8_t>(entry.type);
             if (!write_data(&type, sizeof(type))) goto write_failed;
@@ -403,14 +392,12 @@ private:
             if (!write_data(&expire_at, sizeof(expire_at))) goto write_failed;
         }
 
-        // 5. CRC32 footer (not included in CRC computation)
         if (fwrite(&crc, 1, sizeof(crc), fp) != sizeof(crc)) {
             goto write_failed;
         }
 
         fflush(fp);
 
-        // Sync to physical storage
 #ifdef _WIN32
         {
             int fd = _fileno(fp);
@@ -433,7 +420,6 @@ private:
         fclose(fp);
         fp = nullptr;
 
-        // Atomic file rename
         if (!atomic_rename(tmp_path, target_path)) {
             std::cerr << "[kvllay] Failed to rename " << tmp_path << " to " << target_path << std::endl;
             remove(tmp_path.c_str());
@@ -470,6 +456,6 @@ private:
     std::condition_variable auto_save_cv_;
 };
 
-} // namespace kvllay
+}
 
 #endif // KVLLAY_SNAPSHOT_HPP

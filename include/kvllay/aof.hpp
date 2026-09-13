@@ -138,7 +138,6 @@ public:
             writer_thread_.join();
         }
 
-        // Flush remaining buffers
         flush_sync();
 
         if (file_handle_) {
@@ -174,7 +173,7 @@ public:
 
         FILE* fp = fopen(aof_path_.c_str(), "rb");
         if (!fp) {
-            return true; // No existing file to replay
+            return true;
         }
 
         constexpr size_t CHUNK_SIZE = 65536;
@@ -197,13 +196,11 @@ public:
                     replay_command(store, args);
                 } else if (status == ParseStatus::Incomplete) {
                     if (bytes_read == 0) {
-                        // EOF reached with incomplete command
                         parse_buffer.clear();
                         break;
                     }
-                    break; // Read more data
+                    break;
                 } else {
-                    // Protocol error in AOF
                     std::cerr << "[kvllay] Warning: Corrupt command encountered in AOF, stopping replay" << std::endl;
                     parse_buffer.clear();
                     break;
@@ -229,7 +226,6 @@ public:
             return false;
         }
 
-        // Quick snapshot of current state
         auto entries = store.get_all_entries();
 
         std::thread([this, entries = std::move(entries)]() mutable {
@@ -329,12 +325,12 @@ private:
                     if (rem_sec == 0) rem_sec = 1;
                     serialized = Resp::array({"SETEX", entry.key, std::to_string(rem_sec), entry.string_val});
                 } else {
-                    continue; // Key already expired
+                    continue;
                 }
             } else if (entry.type == Store::EntryType::List) {
                 if (entry.list_val.empty()) continue;
                 if (entry.expire_at_epoch_ms != 0 && entry.expire_at_epoch_ms <= now_wall) {
-                    continue; // Key already expired
+                    continue;
                 }
                 std::vector<std::string> rpush_args;
                 rpush_args.reserve(2 + entry.list_val.size());
@@ -361,11 +357,9 @@ private:
 
         fflush(tmp_fp);
 
-        // Atomic swap under buffer_mutex_
         {
             std::lock_guard<std::mutex> lock(buffer_mutex_);
 
-            // Drain active and flushing buffer to tmp_fp
             if (!flushing_buffer_.empty()) {
                 fwrite(flushing_buffer_.data(), 1, flushing_buffer_.size(), tmp_fp);
                 flushing_buffer_.clear();
@@ -379,20 +373,17 @@ private:
             fclose(tmp_fp);
             tmp_fp = nullptr;
 
-            // Close old file handle
             if (file_handle_) {
                 fclose(file_handle_);
                 file_handle_ = nullptr;
             }
 
-            // Atomic rename
 #ifdef _WIN32
             MoveFileExA(tmp_path.c_str(), aof_path_.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_COPY_ALLOWED);
 #else
             ::rename(tmp_path.c_str(), aof_path_.c_str());
 #endif
 
-            // Reopen in append mode
             file_handle_ = fopen(aof_path_.c_str(), "ab");
         }
     }
@@ -499,6 +490,6 @@ private:
     std::chrono::steady_clock::time_point last_fsync_time_;
 };
 
-} // namespace kvllay
+}
 
 #endif // KVLLAY_AOF_HPP

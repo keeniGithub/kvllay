@@ -37,14 +37,45 @@ public:
     struct Entry {
         std::variant<std::string, std::deque<std::string>> data;
         uint64_t expire_at = 0;
+        mutable std::atomic<uint64_t> last_access{0};
 
         Entry() = default;
-        Entry(std::string str, uint64_t exp = 0)
-            : data(std::move(str)), expire_at(exp) {}
-        Entry(const char* str, uint64_t exp = 0)
-            : data(std::string(str)), expire_at(exp) {}
-        Entry(std::deque<std::string> lst, uint64_t exp = 0)
-            : data(std::move(lst)), expire_at(exp) {}
+        Entry(std::string str, uint64_t exp = 0, uint64_t access = 0)
+            : data(std::move(str)), expire_at(exp), last_access(access) {}
+        Entry(const char* str, uint64_t exp = 0, uint64_t access = 0)
+            : data(std::string(str)), expire_at(exp), last_access(access) {}
+        Entry(std::deque<std::string> lst, uint64_t exp = 0, uint64_t access = 0)
+            : data(std::move(lst)), expire_at(exp), last_access(access) {}
+
+        Entry(const Entry& other)
+            : data(other.data), expire_at(other.expire_at),
+              last_access(other.last_access.load(std::memory_order_relaxed)) {}
+
+        Entry& operator=(const Entry& other) {
+            if (this != &other) {
+                data = other.data;
+                expire_at = other.expire_at;
+                last_access.store(other.last_access.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            }
+            return *this;
+        }
+
+        Entry(Entry&& other) noexcept
+            : data(std::move(other.data)), expire_at(other.expire_at),
+              last_access(other.last_access.load(std::memory_order_relaxed)) {}
+
+        Entry& operator=(Entry&& other) noexcept {
+            if (this != &other) {
+                data = std::move(other.data);
+                expire_at = other.expire_at;
+                last_access.store(other.last_access.load(std::memory_order_relaxed), std::memory_order_relaxed);
+            }
+            return *this;
+        }
+
+        void touch(uint64_t now_clock) const noexcept {
+            last_access.store(now_clock, std::memory_order_relaxed);
+        }
 
         bool is_string() const noexcept {
             return std::holds_alternative<std::string>(data);
@@ -71,7 +102,7 @@ public:
         EntryType type = EntryType::String;
         std::string string_val;
         std::vector<std::string> list_val;
-        uint64_t expire_at_epoch_ms = 0; // 0 if persistent, otherwise wall-clock epoch ms
+        uint64_t expire_at_epoch_ms = 0;
     };
 
     enum class KeyType {
@@ -120,7 +151,9 @@ public:
         WrongType
     };
 
-    Store() {
+    Store(size_t max_memory = constants::DEFAULT_MAXMEMORY,
+          constants::MaxmemoryPolicy policy = constants::MaxmemoryPolicy::NoEviction)
+        : maxmemory_(max_memory), maxmemory_policy_(policy) {
         start_active_eviction();
     }
 
@@ -130,6 +163,168 @@ public:
 
     Store(const Store&) = delete;
     Store& operator=(const Store&) = delete;
+
+    size_t used_memory() const noexcept {
+        return used_memory_.load(std::memory_order_relaxed);
+    }
+
+    size_t maxmemory() const noexcept {
+        return maxmemory_.load(std::memory_order_relaxed);
+    }
+
+    void set_maxmemory(size_t bytes) noexcept {
+        maxmemory_.store(bytes, std::memory_order_relaxed);
+    }
+
+    constants::MaxmemoryPolicy maxmemory_policy() const noexcept {
+        return maxmemory_policy_;
+    }
+
+    void set_maxmemory_policy(constants::MaxmemoryPolicy policy) noexcept {
+        maxmemory_policy_ = policy;
+    }
+
+    size_t evicted_keys_count() const noexcept {
+        return evicted_keys_count_.load(std::memory_order_relaxed);
+    }
+
+    static uint64_t current_lru_clock() noexcept {
+        static std::atomic<uint64_t> clock_counter{0};
+        uint64_t now_us = static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count());
+        uint64_t tick = clock_counter.fetch_add(1, std::memory_order_relaxed);
+        return (now_us << 16) | (tick & 0xFFFF);
+    }
+
+    static size_t estimate_entry_memory(const std::string& key, const Entry& entry) noexcept {
+        size_t mem = 112 + key.size();
+        if (entry.is_string()) {
+            mem += entry.as_string().size();
+        } else if (entry.is_list()) {
+            const auto& lst = entry.as_list();
+            mem += lst.size() * 48;
+            for (const auto& elem : lst) {
+                mem += elem.size();
+            }
+        }
+        return mem;
+    }
+
+    static size_t estimate_string_memory(const std::string& key, const std::string& val) noexcept {
+        return 112 + key.size() + val.size();
+    }
+
+    void add_memory(size_t bytes) noexcept {
+        used_memory_.fetch_add(bytes, std::memory_order_relaxed);
+    }
+
+    void sub_memory(size_t bytes) noexcept {
+        size_t current = used_memory_.load(std::memory_order_relaxed);
+        while (current > 0) {
+            size_t next = (bytes >= current) ? 0 : (current - bytes);
+            if (used_memory_.compare_exchange_weak(current, next, std::memory_order_relaxed)) {
+                break;
+            }
+        }
+    }
+
+    bool check_memory_and_evict(size_t needed_bytes = 0) {
+        size_t max_mem = maxmemory_.load(std::memory_order_relaxed);
+        if (max_mem == 0) {
+            return true;
+        }
+
+        size_t current_used = used_memory_.load(std::memory_order_relaxed);
+        if (current_used + needed_bytes <= max_mem) {
+            return true;
+        }
+
+        if (maxmemory_policy_ == constants::MaxmemoryPolicy::NoEviction) {
+            return false;
+        }
+
+        uint64_t now_ms = current_time_ms();
+        size_t attempts = 0;
+        constexpr size_t MAX_ATTEMPTS = 10000;
+
+        while (used_memory_.load(std::memory_order_relaxed) + needed_bytes > max_mem && attempts < MAX_ATTEMPTS) {
+            attempts++;
+
+            std::string best_key;
+            size_t best_shard_idx = 0;
+            uint64_t oldest_access = UINT64_MAX;
+            uint64_t shortest_ttl = UINT64_MAX;
+            bool found = false;
+            bool expired_found = false;
+
+            for (size_t s = 0; s < NUM_SHARDS; ++s) {
+                auto& shard = shards_[s];
+                std::shared_lock<std::shared_mutex> lock(shard.mutex);
+                if (shard.data.empty()) continue;
+
+                size_t sampled = 0;
+                for (const auto& [k, entry] : shard.data) {
+                    if (entry.expire_at != 0 && entry.expire_at <= now_ms) {
+                        best_key = k;
+                        best_shard_idx = s;
+                        found = true;
+                        expired_found = true;
+                        break;
+                    }
+
+                    if (maxmemory_policy_ == constants::MaxmemoryPolicy::VolatileLru ||
+                        maxmemory_policy_ == constants::MaxmemoryPolicy::VolatileTtl) {
+                        if (entry.expire_at == 0) continue;
+                    }
+
+                    if (maxmemory_policy_ == constants::MaxmemoryPolicy::AllKeysLru ||
+                        maxmemory_policy_ == constants::MaxmemoryPolicy::VolatileLru) {
+                        uint64_t acc = entry.last_access.load(std::memory_order_relaxed);
+                        if (acc < oldest_access) {
+                            oldest_access = acc;
+                            best_key = k;
+                            best_shard_idx = s;
+                            found = true;
+                        }
+                    } else if (maxmemory_policy_ == constants::MaxmemoryPolicy::VolatileTtl) {
+                        if (entry.expire_at < shortest_ttl) {
+                            shortest_ttl = entry.expire_at;
+                            best_key = k;
+                            best_shard_idx = s;
+                            found = true;
+                        }
+                    } else if (maxmemory_policy_ == constants::MaxmemoryPolicy::AllKeysRandom) {
+                        best_key = k;
+                        best_shard_idx = s;
+                        found = true;
+                        break;
+                    }
+
+                    if (++sampled >= 5) break;
+                }
+                if (expired_found || (found && (maxmemory_policy_ == constants::MaxmemoryPolicy::AllKeysRandom))) {
+                    break;
+                }
+            }
+
+            if (!found) {
+                break;
+            }
+
+            auto& shard = shards_[best_shard_idx];
+            std::unique_lock<std::shared_mutex> lock(shard.mutex);
+            auto it = shard.data.find(best_key);
+            if (it != shard.data.end()) {
+                sub_memory(estimate_entry_memory(best_key, it->second));
+                shard.data.erase(it);
+                shard.keys_with_ttl.erase(best_key);
+                evicted_keys_count_++;
+                dirty_++;
+            }
+        }
+
+        return (used_memory_.load(std::memory_order_relaxed) + needed_bytes <= max_mem);
+    }
 
     static uint64_t current_time_ms() {
         return static_cast<uint64_t>(
@@ -189,10 +384,16 @@ public:
     bool set(const std::string& key, const std::string& value) {
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
+        uint64_t now_sec = current_lru_clock();
         {
             std::unique_lock<std::shared_mutex> lock(shard.mutex);
-            shard.data[key] = Entry{value, 0};
+            auto it = shard.data.find(key);
+            if (it != shard.data.end()) {
+                sub_memory(estimate_entry_memory(key, it->second));
+            }
+            shard.data[key] = Entry{value, 0, now_sec};
             shard.keys_with_ttl.erase(key);
+            add_memory(estimate_string_memory(key, value));
         }
         dirty_++;
         return true;
@@ -215,11 +416,17 @@ public:
             locks.emplace_back(shards_[s_idx].mutex);
         }
 
+        uint64_t now_sec = current_lru_clock();
         for (const auto& [key, value] : kvs) {
             size_t idx = shard_index(key);
             auto& shard = shards_[idx];
-            shard.data[key] = Entry{value, 0};
+            auto it = shard.data.find(key);
+            if (it != shard.data.end()) {
+                sub_memory(estimate_entry_memory(key, it->second));
+            }
+            shard.data[key] = Entry{value, 0, now_sec};
             shard.keys_with_ttl.erase(key);
+            add_memory(estimate_string_memory(key, value));
         }
         dirty_ += kvs.size();
         return true;
@@ -229,10 +436,16 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         uint64_t expire_at = current_time_ms() + ttl_ms;
+        uint64_t now_sec = current_lru_clock();
         {
             std::unique_lock<std::shared_mutex> lock(shard.mutex);
-            shard.data[key] = Entry{value, expire_at};
+            auto it = shard.data.find(key);
+            if (it != shard.data.end()) {
+                sub_memory(estimate_entry_memory(key, it->second));
+            }
+            shard.data[key] = Entry{value, expire_at, now_sec};
             shard.keys_with_ttl.insert(key);
+            add_memory(estimate_string_memory(key, value));
         }
         dirty_++;
         return true;
@@ -242,6 +455,7 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         uint64_t now = current_time_ms();
+        uint64_t now_sec = current_lru_clock();
         {
             std::shared_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(key);
@@ -252,6 +466,7 @@ public:
                 if (!it->second.is_string()) {
                     return {GetStatus::WrongType, ""};
                 }
+                it->second.touch(now_sec);
                 return {GetStatus::Success, it->second.as_string()};
             }
         }
@@ -260,6 +475,7 @@ public:
         auto it = shard.data.find(key);
         if (it != shard.data.end()) {
             if (it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+                sub_memory(estimate_entry_memory(key, it->second));
                 shard.data.erase(it);
                 shard.keys_with_ttl.erase(key);
                 return {GetStatus::NotFound, ""};
@@ -267,6 +483,7 @@ public:
             if (!it->second.is_string()) {
                 return {GetStatus::WrongType, ""};
             }
+            it->second.touch(now_sec);
             return {GetStatus::Success, it->second.as_string()};
         }
         return {GetStatus::NotFound, ""};
@@ -274,6 +491,7 @@ public:
 
     std::vector<std::optional<std::string>> mget(const std::vector<std::string>& keys) {
         uint64_t now = current_time_ms();
+        uint64_t now_sec = current_lru_clock();
         std::vector<std::optional<std::string>> result;
         result.reserve(keys.size());
         std::vector<std::string> expired_keys;
@@ -304,6 +522,7 @@ public:
             } else if (!it->second.is_string()) {
                 result.push_back(std::nullopt);
             } else {
+                it->second.touch(now_sec);
                 result.push_back(it->second.as_string());
             }
         }
@@ -317,6 +536,7 @@ public:
                 std::unique_lock<std::shared_mutex> lock(shard.mutex);
                 auto it = shard.data.find(key);
                 if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
+                    sub_memory(estimate_entry_memory(key, it->second));
                     shard.data.erase(it);
                     shard.keys_with_ttl.erase(key);
                 }
@@ -337,8 +557,8 @@ public:
                 return KeyType::None;
             }
             if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-                // Expired
             } else {
+                it->second.touch(current_lru_clock());
                 return it->second.is_string() ? KeyType::String : KeyType::List;
             }
         }
@@ -347,10 +567,12 @@ public:
         auto it = shard.data.find(key);
         if (it != shard.data.end()) {
             if (it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+                sub_memory(estimate_entry_memory(key, it->second));
                 shard.data.erase(it);
                 shard.keys_with_ttl.erase(key);
                 return KeyType::None;
             }
+            it->second.touch(current_lru_clock());
             return it->second.is_string() ? KeyType::String : KeyType::List;
         }
         return KeyType::None;
@@ -364,9 +586,15 @@ public:
         uint64_t now = current_time_ms();
         auto it = shard.data.find(key);
         if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             it = shard.data.end();
+        }
+
+        size_t added_bytes = values.size() * 48;
+        for (const auto& val : values) {
+            added_bytes += val.size();
         }
 
         if (it != shard.data.end()) {
@@ -377,14 +605,17 @@ public:
             for (const auto& val : values) {
                 deque.push_front(val);
             }
+            it->second.touch(current_lru_clock());
             new_len = deque.size();
+            add_memory(added_bytes);
         } else {
             std::deque<std::string> deque;
             for (const auto& val : values) {
                 deque.push_front(val);
             }
             new_len = deque.size();
-            shard.data[key] = Entry{std::move(deque), 0};
+            shard.data[key] = Entry{std::move(deque), 0, current_lru_clock()};
+            add_memory(112 + key.size() + added_bytes);
         }
 
         dirty_ += values.size();
@@ -399,9 +630,15 @@ public:
         uint64_t now = current_time_ms();
         auto it = shard.data.find(key);
         if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             it = shard.data.end();
+        }
+
+        size_t added_bytes = values.size() * 48;
+        for (const auto& val : values) {
+            added_bytes += val.size();
         }
 
         if (it != shard.data.end()) {
@@ -412,14 +649,17 @@ public:
             for (const auto& val : values) {
                 deque.push_back(val);
             }
+            it->second.touch(current_lru_clock());
             new_len = deque.size();
+            add_memory(added_bytes);
         } else {
             std::deque<std::string> deque;
             for (const auto& val : values) {
                 deque.push_back(val);
             }
             new_len = deque.size();
-            shard.data[key] = Entry{std::move(deque), 0};
+            shard.data[key] = Entry{std::move(deque), 0, current_lru_clock()};
+            add_memory(112 + key.size() + added_bytes);
         }
 
         dirty_ += values.size();
@@ -437,6 +677,7 @@ public:
             return ListPopStatus::NotFound;
         }
         if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return ListPopStatus::NotFound;
@@ -447,6 +688,7 @@ public:
 
         auto& deque = it->second.as_list();
         if (deque.empty()) {
+            sub_memory(112 + key.size());
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return ListPopStatus::NotFound;
@@ -454,14 +696,20 @@ public:
 
         size_t to_pop = std::min(count, deque.size());
         out_popped.reserve(to_pop);
+        size_t popped_bytes = to_pop * 48;
         for (size_t i = 0; i < to_pop; ++i) {
+            popped_bytes += deque.front().size();
             out_popped.push_back(std::move(deque.front()));
             deque.pop_front();
         }
+        sub_memory(popped_bytes);
 
         if (deque.empty()) {
+            sub_memory(112 + key.size());
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
+        } else {
+            it->second.touch(current_lru_clock());
         }
 
         dirty_ += out_popped.size();
@@ -479,6 +727,7 @@ public:
             return ListPopStatus::NotFound;
         }
         if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return ListPopStatus::NotFound;
@@ -489,6 +738,7 @@ public:
 
         auto& deque = it->second.as_list();
         if (deque.empty()) {
+            sub_memory(112 + key.size());
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return ListPopStatus::NotFound;
@@ -496,14 +746,20 @@ public:
 
         size_t to_pop = std::min(count, deque.size());
         out_popped.reserve(to_pop);
+        size_t popped_bytes = to_pop * 48;
         for (size_t i = 0; i < to_pop; ++i) {
+            popped_bytes += deque.back().size();
             out_popped.push_back(std::move(deque.back()));
             deque.pop_back();
         }
+        sub_memory(popped_bytes);
 
         if (deque.empty()) {
+            sub_memory(112 + key.size());
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
+        } else {
+            it->second.touch(current_lru_clock());
         }
 
         dirty_ += out_popped.size();
@@ -515,6 +771,7 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         uint64_t now = current_time_ms();
+        uint64_t now_sec = current_lru_clock();
         {
             std::shared_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(key);
@@ -522,11 +779,11 @@ public:
                 return ListLenStatus::Success;
             }
             if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-                // Expired
             } else {
                 if (!it->second.is_list()) {
                     return ListLenStatus::WrongType;
                 }
+                it->second.touch(now_sec);
                 out_len = it->second.as_list().size();
                 return ListLenStatus::Success;
             }
@@ -536,6 +793,7 @@ public:
         auto it = shard.data.find(key);
         if (it != shard.data.end()) {
             if (it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+                sub_memory(estimate_entry_memory(key, it->second));
                 shard.data.erase(it);
                 shard.keys_with_ttl.erase(key);
                 return ListLenStatus::Success;
@@ -543,6 +801,7 @@ public:
             if (!it->second.is_list()) {
                 return ListLenStatus::WrongType;
             }
+            it->second.touch(now_sec);
             out_len = it->second.as_list().size();
         }
         return ListLenStatus::Success;
@@ -553,6 +812,7 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         uint64_t now = current_time_ms();
+        uint64_t now_sec = current_lru_clock();
         {
             std::shared_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(key);
@@ -560,11 +820,11 @@ public:
                 return ListRangeStatus::NotFound;
             }
             if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-                // Expired
             } else {
                 if (!it->second.is_list()) {
                     return ListRangeStatus::WrongType;
                 }
+                it->second.touch(now_sec);
                 const auto& deque = it->second.as_list();
                 int64_t len = static_cast<int64_t>(deque.size());
                 if (len == 0) return ListRangeStatus::Success;
@@ -589,6 +849,7 @@ public:
         std::unique_lock<std::shared_mutex> lock(shard.mutex);
         auto it = shard.data.find(key);
         if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return ListRangeStatus::NotFound;
@@ -599,6 +860,7 @@ public:
         if (!it->second.is_list()) {
             return ListRangeStatus::WrongType;
         }
+        it->second.touch(now_sec);
         const auto& deque = it->second.as_list();
         int64_t len = static_cast<int64_t>(deque.size());
         if (len == 0) return ListRangeStatus::Success;
@@ -623,6 +885,7 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         uint64_t now = current_time_ms();
+        uint64_t now_sec = current_lru_clock();
         {
             std::shared_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(key);
@@ -630,11 +893,11 @@ public:
                 return ListRangeStatus::NotFound;
             }
             if (it->second.expire_at != 0 && it->second.expire_at <= now) {
-                // Expired
             } else {
                 if (!it->second.is_list()) {
                     return ListRangeStatus::WrongType;
                 }
+                it->second.touch(now_sec);
                 const auto& deque = it->second.as_list();
                 int64_t len = static_cast<int64_t>(deque.size());
                 if (index < 0) index = len + index;
@@ -649,6 +912,7 @@ public:
         std::unique_lock<std::shared_mutex> lock(shard.mutex);
         auto it = shard.data.find(key);
         if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return ListRangeStatus::NotFound;
@@ -659,6 +923,7 @@ public:
         if (!it->second.is_list()) {
             return ListRangeStatus::WrongType;
         }
+        it->second.touch(now_sec);
         const auto& deque = it->second.as_list();
         int64_t len = static_cast<int64_t>(deque.size());
         if (index < 0) index = len + index;
@@ -680,6 +945,7 @@ public:
             auto it = shard.data.find(key);
             if (it != shard.data.end()) {
                 bool is_active = (it->second.expire_at == 0 || it->second.expire_at > now);
+                sub_memory(estimate_entry_memory(key, it->second));
                 shard.data.erase(it);
                 shard.keys_with_ttl.erase(key);
                 if (is_active) {
@@ -712,6 +978,7 @@ public:
             auto it = shard.data.find(key);
             if (it != shard.data.end()) {
                 bool is_active = (it->second.expire_at == 0 || it->second.expire_at > now);
+                sub_memory(estimate_entry_memory(key, it->second));
                 shard.data.erase(it);
                 shard.keys_with_ttl.erase(key);
                 if (is_active) {
@@ -767,6 +1034,7 @@ public:
                 std::unique_lock<std::shared_mutex> lock(shard.mutex);
                 auto it = shard.data.find(key);
                 if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= cur_now) {
+                    sub_memory(estimate_entry_memory(key, it->second));
                     shard.data.erase(it);
                     shard.keys_with_ttl.erase(key);
                 }
@@ -851,18 +1119,21 @@ public:
         }
         uint64_t now = current_time_ms();
         if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return 0;
         }
 
         if (ttl_ms == 0) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return 1;
         }
 
         it->second.expire_at = now + ttl_ms;
+        it->second.touch(current_lru_clock());
         shard.keys_with_ttl.insert(key);
         dirty_++;
         return 1;
@@ -893,6 +1164,7 @@ public:
         std::unique_lock<std::shared_mutex> lock(shard.mutex);
         auto it = shard.data.find(key);
         if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= current_time_ms()) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
         }
@@ -909,6 +1181,7 @@ public:
         }
         uint64_t now = current_time_ms();
         if (it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             return 0;
@@ -917,6 +1190,7 @@ public:
             return 0;
         }
         it->second.expire_at = 0;
+        it->second.touch(current_lru_clock());
         shard.keys_with_ttl.erase(key);
         dirty_++;
         return 1;
@@ -928,6 +1202,7 @@ public:
             shard.data.clear();
             shard.keys_with_ttl.clear();
         }
+        used_memory_.store(0, std::memory_order_relaxed);
         dirty_++;
     }
 
@@ -974,6 +1249,7 @@ public:
                     to_remove.push_back(*it);
                 } else if (data_it->second.expire_at != 0 && data_it->second.expire_at <= now) {
                     to_remove.push_back(*it);
+                    sub_memory(estimate_entry_memory(*it, data_it->second));
                     shard.data.erase(data_it);
                 }
             }
@@ -1026,7 +1302,6 @@ public:
         uint64_t now_wall = wall_time_ms();
         std::vector<DumpEntry> result;
 
-        // Acquire shared lock on all shards in ascending order
         std::vector<std::shared_lock<std::shared_mutex>> locks;
         locks.reserve(NUM_SHARDS);
         for (const auto& shard : shards_) {
@@ -1058,9 +1333,14 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         std::unique_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.data.find(key);
+        if (it != shard.data.end()) {
+            sub_memory(estimate_entry_memory(key, it->second));
+        }
         if (expire_at_epoch_ms == 0) {
-            shard.data[key] = Entry{value, 0};
+            shard.data[key] = Entry{value, 0, current_lru_clock()};
             shard.keys_with_ttl.erase(key);
+            add_memory(estimate_string_memory(key, value));
         } else {
             uint64_t now_wall = wall_time_ms();
             if (expire_at_epoch_ms <= now_wall) {
@@ -1068,8 +1348,9 @@ public:
                 shard.keys_with_ttl.erase(key);
             } else {
                 uint64_t remaining_ms = expire_at_epoch_ms - now_wall;
-                shard.data[key] = Entry{value, current_time_ms() + remaining_ms};
+                shard.data[key] = Entry{value, current_time_ms() + remaining_ms, current_lru_clock()};
                 shard.keys_with_ttl.insert(key);
+                add_memory(estimate_string_memory(key, value));
             }
         }
     }
@@ -1079,10 +1360,19 @@ public:
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
         std::unique_lock<std::shared_mutex> lock(shard.mutex);
+        auto it = shard.data.find(key);
+        if (it != shard.data.end()) {
+            sub_memory(estimate_entry_memory(key, it->second));
+        }
         std::deque<std::string> deque(elements.begin(), elements.end());
+        size_t elem_mem = elements.size() * 48;
+        for (const auto& el : elements) {
+            elem_mem += el.size();
+        }
         if (expire_at_epoch_ms == 0) {
-            shard.data[key] = Entry{std::move(deque), 0};
+            shard.data[key] = Entry{std::move(deque), 0, current_lru_clock()};
             shard.keys_with_ttl.erase(key);
+            add_memory(112 + key.size() + elem_mem);
         } else {
             uint64_t now_wall = wall_time_ms();
             if (expire_at_epoch_ms <= now_wall) {
@@ -1090,8 +1380,9 @@ public:
                 shard.keys_with_ttl.erase(key);
             } else {
                 uint64_t remaining_ms = expire_at_epoch_ms - now_wall;
-                shard.data[key] = Entry{std::move(deque), current_time_ms() + remaining_ms};
+                shard.data[key] = Entry{std::move(deque), current_time_ms() + remaining_ms, current_lru_clock()};
                 shard.keys_with_ttl.insert(key);
+                add_memory(112 + key.size() + elem_mem);
             }
         }
     }
@@ -1108,6 +1399,7 @@ private:
         uint64_t now = current_time_ms();
         auto it = shard.data.find(key);
         if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= now) {
+            sub_memory(estimate_entry_memory(key, it->second));
             shard.data.erase(it);
             shard.keys_with_ttl.erase(key);
             it = shard.data.end();
@@ -1130,10 +1422,21 @@ private:
             return IncrStatus::Overflow;
         }
 
+        std::string new_str = std::to_string(new_val);
+        uint64_t now_sec = current_lru_clock();
         if (it != shard.data.end()) {
-            it->second.as_string() = std::to_string(new_val);
+            size_t old_size = it->second.as_string().size();
+            size_t new_size = new_str.size();
+            if (new_size > old_size) {
+                add_memory(new_size - old_size);
+            } else if (old_size > new_size) {
+                sub_memory(old_size - new_size);
+            }
+            it->second.as_string() = std::move(new_str);
+            it->second.touch(now_sec);
         } else {
-            shard.data[key] = Entry{std::to_string(new_val), 0};
+            shard.data[key] = Entry{std::move(new_str), 0, now_sec};
+            add_memory(estimate_string_memory(key, shard.data[key].as_string()));
         }
 
         dirty_++;
@@ -1158,6 +1461,10 @@ private:
     std::thread eviction_thread_;
     std::mutex eviction_cv_mutex_;
     std::condition_variable eviction_cv_;
+    std::atomic<size_t> used_memory_{0};
+    std::atomic<size_t> maxmemory_{0};
+    constants::MaxmemoryPolicy maxmemory_policy_{constants::MaxmemoryPolicy::NoEviction};
+    std::atomic<size_t> evicted_keys_count_{0};
 };
 
 }
