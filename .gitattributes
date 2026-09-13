@@ -1,0 +1,4 @@
+# Exclude website and documentation from GitHub language statistics
+website/** linguist-detectable=false
+website/** linguist-documentation
+docs/** linguist-documentation
