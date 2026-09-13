@@ -28,6 +28,12 @@ public:
         uint64_t expire_at = 0;
     };
 
+    struct DumpEntry {
+        std::string key;
+        std::string value;
+        uint64_t expire_at_epoch_ms = 0; // 0 if persistent, otherwise wall-clock epoch ms
+    };
+
     Store() {
         start_active_eviction();
     }
@@ -43,6 +49,14 @@ public:
         return static_cast<uint64_t>(
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now().time_since_epoch()
+            ).count()
+        );
+    }
+
+    static uint64_t wall_time_ms() {
+        return static_cast<uint64_t>(
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()
             ).count()
         );
     }
@@ -96,6 +110,7 @@ public:
         std::unique_lock<std::shared_mutex> lock(mutex_);
         data_[key] = Entry{value, 0};
         keys_with_ttl_.erase(key);
+        dirty_++;
         return true;
     }
 
@@ -105,6 +120,7 @@ public:
             data_[key] = Entry{value, 0};
             keys_with_ttl_.erase(key);
         }
+        dirty_ += kvs.size();
         return true;
     }
 
@@ -113,6 +129,7 @@ public:
         uint64_t expire_at = current_time_ms() + ttl_ms;
         data_[key] = Entry{value, expire_at};
         keys_with_ttl_.insert(key);
+        dirty_++;
         return true;
     }
 
@@ -192,6 +209,9 @@ public:
                     count++;
                 }
             }
+        }
+        if (count > 0) {
+            dirty_ += count;
         }
         return count;
     }
@@ -300,6 +320,7 @@ public:
 
         it->second.expire_at = now + ttl_ms;
         keys_with_ttl_.insert(key);
+        dirty_++;
         return 1;
     }
 
@@ -349,6 +370,7 @@ public:
         }
         it->second.expire_at = 0;
         keys_with_ttl_.erase(key);
+        dirty_++;
         return 1;
     }
 
@@ -356,6 +378,7 @@ public:
         std::unique_lock<std::shared_mutex> lock(mutex_);
         data_.clear();
         keys_with_ttl_.clear();
+        dirty_++;
     }
 
     size_t size() const {
@@ -435,6 +458,53 @@ public:
         }
     }
 
+    uint64_t dirty_count() const {
+        return dirty_.load();
+    }
+
+    void reset_dirty() {
+        dirty_.store(0);
+    }
+
+    std::vector<DumpEntry> get_all_entries() const {
+        std::shared_lock<std::shared_mutex> lock(mutex_);
+        uint64_t now_steady = current_time_ms();
+        uint64_t now_wall = wall_time_ms();
+        std::vector<DumpEntry> result;
+        result.reserve(data_.size());
+
+        for (const auto& [k, v] : data_) {
+            if (v.expire_at != 0 && v.expire_at <= now_steady) {
+                continue;
+            }
+            uint64_t expire_at_wall = 0;
+            if (v.expire_at > now_steady) {
+                uint64_t remaining_ms = v.expire_at - now_steady;
+                expire_at_wall = now_wall + remaining_ms;
+            }
+            result.push_back({k, v.value, expire_at_wall});
+        }
+        return result;
+    }
+
+    void restore_entry(const std::string& key, const std::string& value, uint64_t expire_at_epoch_ms) {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        if (expire_at_epoch_ms == 0) {
+            data_[key] = Entry{value, 0};
+            keys_with_ttl_.erase(key);
+        } else {
+            uint64_t now_wall = wall_time_ms();
+            if (expire_at_epoch_ms <= now_wall) {
+                data_.erase(key);
+                keys_with_ttl_.erase(key);
+            } else {
+                uint64_t remaining_ms = expire_at_epoch_ms - now_wall;
+                data_[key] = Entry{value, current_time_ms() + remaining_ms};
+                keys_with_ttl_.insert(key);
+            }
+        }
+    }
+
 private:
     IncrStatus modify_int(const std::string& key, int64_t delta, int64_t& result_val, bool is_decrement) {
         std::unique_lock<std::shared_mutex> lock(mutex_);
@@ -466,6 +536,7 @@ private:
             data_[key] = Entry{std::to_string(new_val), 0};
         }
 
+        dirty_++;
         result_val = new_val;
         return IncrStatus::Success;
     }
@@ -474,6 +545,7 @@ private:
     std::unordered_map<std::string, Entry> data_;
     std::unordered_set<std::string> keys_with_ttl_;
 
+    std::atomic<uint64_t> dirty_{0};
     std::atomic<bool> active_eviction_running_{false};
     std::thread eviction_thread_;
     std::mutex eviction_cv_mutex_;

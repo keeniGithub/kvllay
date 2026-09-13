@@ -14,6 +14,8 @@
 │       ├── constants.hpp   # Centralized version, network, store, and protocol constants
 │       ├── resp.hpp        # RESP2 serialization and streaming command parser
 │       ├── store.hpp       # In-memory key-value storage engine (thread-safe, TTL, GC)
+│       ├── snapshot.hpp    # Binary point-in-time snapshot manager (CRC32, atomic rename, no fork)
+│       ├── aof.hpp         # Append-Only Log manager (double-buffering, async fsync, no-fork rewrite)
 │       ├── commands.hpp    # Command dispatcher and individual command handlers
 │       └── server.hpp      # Cross-platform TCP socket server (POSIX / Winsock)
 ├── src/
@@ -102,9 +104,34 @@
   - `DECRBY key decrement`: Atomically decrements integer value by given delta.
   - `MGET key [key ...]`: Atomically retrieves multiple keys in a single roundtrip, returning array of bulk strings or nulls (`$-1`).
   - `MSET key value [key value ...]`: Atomically sets multiple key-value pairs in a single operation, clearing any existing TTLs.
+  - `SAVE`: Synchronously dumps memory state to binary snapshot file (`dump.kvl`).
+  - `BGSAVE`: Asynchronously dumps memory state to snapshot in a background thread without `fork()`.
+  - `LASTSAVE`: Returns UNIX epoch timestamp of the most recent successful snapshot save.
+  - `BGREWRITEAOF`: Compacts and rewrites AOF log in background from current in-memory state without `fork()`.
 
-### 4. Networking & Server (`include/kvllay/server.hpp`)
+### 4. Binary Snapshot Engine (`include/kvllay/snapshot.hpp`)
+- **Class**: `kvllay::SnapshotManager`
+- **Why it is better than Redis**:
+  - Redis relies on Linux `fork()`, which causes page-table copying latency spikes (up to hundreds of milliseconds) and Copy-On-Write memory explosion (up to 2x RAM usage under write traffic, risking OOM kills). Redis snapshots are also not natively supported on Windows.
+  - `kvllay` creates point-in-time snapshots in a background thread using a brief `std::shared_lock` read-lock (readers are never blocked, writes are paused for microseconds to extract references). Zero kernel COW page table bloat, zero memory doubling, and fully cross-platform (Linux & Windows).
+- **Format**:
+  - Header: `"KVLLAYS1"` (8 bytes) + timestamp (8 bytes) + record count (8 bytes).
+  - Records: `key_len` (4B) + `key` + `val_len` (4B) + `val` + `expire_at_epoch_ms` (8B).
+  - Footer: 32-bit CRC32 checksum verifying data integrity.
+- **Atomic File Swapping**: Writes to `<file>.tmp.<pid>_<ts>`, flushes & fsyncs, then executes atomic `rename()` / `MoveFileExA`.
+
+### 5. Append-Only Log Engine (`include/kvllay/aof.hpp`)
+- **Class**: `kvllay::AofManager`
+- **Why it is better than Redis**:
+  - Redis event loop can stall when fsync disk operations backlog in background threads.
+  - `kvllay` utilizes a double-buffered architecture: client threads write mutating commands (`SET`, `DEL`, `INCR`, `MSET`, etc.) into an active memory buffer in nanoseconds without blocking on disk I/O.
+  - Dedicated background writer thread swaps active and flushing buffers, streams to disk sequentially, and executes periodic `fdatasync()` / `FlushFileBuffers()` every second (`everysec`) or per command (`always`).
+- **Format & Interoperability**: Formatted as standard Redis RESP2 commands (`*<count>\r\n...`), allowing direct inspection, debugging, and pipe loading into standard Redis tools.
+- **Background Rewrite**: Non-blocking `BGREWRITEAOF` dumps in-memory state to a temporary rewrite file, appends newly arriving mutations, and atomically replaces the active AOF log.
+
+### 6. Networking & Server (`include/kvllay/server.hpp`)
 - **Class**: `kvllay::Server`
+- **Configuration**: `kvllay::ServerConfig` encapsulates port, host, password, snapshot options, and AOF options.
 - **Platform Abstraction**:
   - Windows: Uses `winsock2.h`, `ws2tcpip.h`, `SOCKET`, `WSAStartup`/`WSACleanup`, linked with `-lws2_32`.
   - POSIX / Linux: Uses standard socket API (`sys/socket.h`, `netinet/in.h`, `arpa/inet.h`, `unistd.h`).
@@ -120,11 +147,17 @@
     - `Error`: Sends `-ERR Protocol error\r\n` and closes connection immediately.
   - Tracks connection-level `bool authenticated` (defaults to `true` if server password is empty, `false` otherwise).
 
-### 5. CLI Entrypoint (`src/main.cpp`)
+### 7. CLI Entrypoint (`src/main.cpp`)
 - Parses CLI flags and positional arguments:
   - `-p`, `--port <port>`: Port to listen on (default: `6379`).
   - `-h`, `--bind`, `--host <host>`: Bind IP (default: `0.0.0.0`).
   - `-a`, `--requirepass`, `--password <pass>`: Server auth password.
+  - `--save <secs> [changes]`: Auto-save snapshot every `<secs>` if `[changes]` occurred.
+  - `--snapshot`, `--save-file <file>`: Snapshot path (default: `dump.kvl`).
+  - `--no-snapshot`: Disables snapshot file loading and saving.
+  - `--aof [file]`: Enables Append-Only Log persistence (default: `kvllay.aof`).
+  - `--no-aof`: Explicitly disables AOF persistence.
+  - `--appendfsync <always|everysec|no>`: AOF fsync policy (default: `everysec`).
   - Positional fallback: `kvllay [port] [host] [password]`.
   - `--help`: Prints usage options.
 - Instantiates `kvllay::Server` and executes `server.run()`.

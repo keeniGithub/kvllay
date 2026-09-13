@@ -10,6 +10,8 @@
 #include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
+#include <snapshot.hpp>
+#include <aof.hpp>
 
 namespace kvllay {
 
@@ -20,8 +22,12 @@ struct CommandResult {
 
 class CommandHandler {
 public:
-    explicit CommandHandler(Store& store)
-        : store_(store), start_time_(std::chrono::steady_clock::now()) {}
+    explicit CommandHandler(Store& store, SnapshotManager* snapshot_mgr = nullptr, AofManager* aof_mgr = nullptr)
+        : store_(store), snapshot_mgr_(snapshot_mgr), aof_mgr_(aof_mgr),
+          start_time_(std::chrono::steady_clock::now()) {}
+
+    void set_snapshot_manager(SnapshotManager* mgr) { snapshot_mgr_ = mgr; }
+    void set_aof_manager(AofManager* mgr) { aof_mgr_ = mgr; }
 
     CommandResult dispatch(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
         if (args.empty()) {
@@ -43,59 +49,92 @@ public:
             return {Resp::error("NOAUTH Authentication required."), false};
         }
 
+        CommandResult result;
+        bool is_mutating = false;
+
         if (cmd == "PING") {
-            return handle_ping(args);
+            result = handle_ping(args);
         } else if (cmd == "SET") {
-            return handle_set(args);
+            is_mutating = true;
+            result = handle_set(args);
         } else if (cmd == "GET") {
-            return handle_get(args);
+            result = handle_get(args);
         } else if (cmd == "DEL") {
-            return handle_del(args);
+            is_mutating = true;
+            result = handle_del(args);
         } else if (cmd == "EXISTS") {
-            return handle_exists(args);
+            result = handle_exists(args);
         } else if (cmd == "KEYS") {
-            return handle_keys(args);
+            result = handle_keys(args);
         } else if (cmd == "FLUSHDB" || cmd == "FLUSHALL") {
-            return handle_flushdb(args);
+            is_mutating = true;
+            result = handle_flushdb(args);
         } else if (cmd == "DBSIZE") {
-            return handle_dbsize(args);
+            result = handle_dbsize(args);
         } else if (cmd == "ECHO") {
-            return handle_echo(args);
+            result = handle_echo(args);
         } else if (cmd == "COMMAND") {
-            return handle_command(args);
+            result = handle_command(args);
         } else if (cmd == "INFO") {
-            return handle_info(args);
+            result = handle_info(args);
         } else if (cmd == "EXPIRE") {
-            return handle_expire(args);
+            is_mutating = true;
+            result = handle_expire(args);
         } else if (cmd == "PEXPIRE") {
-            return handle_pexpire(args);
+            is_mutating = true;
+            result = handle_pexpire(args);
         } else if (cmd == "TTL") {
-            return handle_ttl(args);
+            result = handle_ttl(args);
         } else if (cmd == "PTTL") {
-            return handle_pttl(args);
+            result = handle_pttl(args);
         } else if (cmd == "PERSIST") {
-            return handle_persist(args);
+            is_mutating = true;
+            result = handle_persist(args);
         } else if (cmd == "SETEX") {
-            return handle_setex(args);
+            is_mutating = true;
+            result = handle_setex(args);
         } else if (cmd == "INCR") {
-            return handle_incr(args);
+            is_mutating = true;
+            result = handle_incr(args);
         } else if (cmd == "DECR") {
-            return handle_decr(args);
+            is_mutating = true;
+            result = handle_decr(args);
         } else if (cmd == "INCRBY") {
-            return handle_incrby(args);
+            is_mutating = true;
+            result = handle_incrby(args);
         } else if (cmd == "DECRBY") {
-            return handle_decrby(args);
+            is_mutating = true;
+            result = handle_decrby(args);
         } else if (cmd == "MGET") {
-            return handle_mget(args);
+            result = handle_mget(args);
         } else if (cmd == "MSET") {
-            return handle_mset(args);
+            is_mutating = true;
+            result = handle_mset(args);
+        } else if (cmd == "SAVE") {
+            result = handle_save(args);
+        } else if (cmd == "BGSAVE") {
+            result = handle_bgsave(args);
+        } else if (cmd == "LASTSAVE") {
+            result = handle_lastsave(args);
+        } else if (cmd == "BGREWRITEAOF") {
+            result = handle_bgrewriteaof(args);
+        } else {
+            return {Resp::error("unknown command '" + args[0] + "'"), false};
         }
 
-        return {Resp::error("unknown command '" + args[0] + "'"), false};
+        if (is_mutating && aof_mgr_ && aof_mgr_->is_enabled()) {
+            if (result.response.rfind("-ERR", 0) != 0 && result.response.rfind("-WRONG", 0) != 0) {
+                aof_mgr_->append(args);
+            }
+        }
+
+        return result;
     }
 
 private:
     Store& store_;
+    SnapshotManager* snapshot_mgr_;
+    AofManager* aof_mgr_;
     std::chrono::steady_clock::time_point start_time_;
 
     CommandResult handle_auth(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
@@ -201,6 +240,14 @@ private:
         info += "redis_version:" + constants::REDIS_VERSION_STRING + "\r\n";
         info += "kvllay_version:" + std::string(constants::VERSION) + "\r\n";
         info += "uptime_in_seconds:" + std::to_string(uptime) + "\r\n";
+        info += "# Persistence\r\n";
+        info += "loading:0\r\n";
+        info += "rdb_changes_since_last_save:" + std::to_string(store_.dirty_count()) + "\r\n";
+        info += "rdb_bgsave_in_progress:" + std::to_string(snapshot_mgr_ && snapshot_mgr_->is_saving() ? 1 : 0) + "\r\n";
+        info += "rdb_last_save_time:" + std::to_string(snapshot_mgr_ ? snapshot_mgr_->last_save_time() : 0) + "\r\n";
+        info += "rdb_last_bgsave_status:ok\r\n";
+        info += "aof_enabled:" + std::to_string(aof_mgr_ && aof_mgr_->is_enabled() ? 1 : 0) + "\r\n";
+        info += "aof_rewrite_in_progress:" + std::to_string(aof_mgr_ && aof_mgr_->is_rewriting() ? 1 : 0) + "\r\n";
         info += "# Keyspace\r\n";
         info += "db0:keys=" + std::to_string(store_.size()) + ",expires=" + std::to_string(store_.expires_size()) + "\r\n";
 
@@ -358,6 +405,59 @@ private:
         }
         store_.mset(kvs);
         return {Resp::simple_string("OK"), false};
+    }
+
+    CommandResult handle_save(const std::vector<std::string>& args) {
+        if (args.size() != 1) {
+            return {Resp::error("wrong number of arguments for 'save' command"), false};
+        }
+        if (!snapshot_mgr_) {
+            return {Resp::error("ERR snapshot manager not configured"), false};
+        }
+        if (!snapshot_mgr_->save_sync(store_)) {
+            return {Resp::error("ERR failed to save snapshot"), false};
+        }
+        return {Resp::simple_string("OK"), false};
+    }
+
+    CommandResult handle_bgsave(const std::vector<std::string>& args) {
+        if (args.size() > 2) {
+            return {Resp::error("wrong number of arguments for 'bgsave' command"), false};
+        }
+        if (!snapshot_mgr_) {
+            return {Resp::error("ERR snapshot manager not configured"), false};
+        }
+        if (snapshot_mgr_->is_saving()) {
+            return {Resp::error("Background save already in progress"), false};
+        }
+        if (!snapshot_mgr_->save_async(store_)) {
+            return {Resp::error("ERR failed to start background save"), false};
+        }
+        return {Resp::simple_string("Background saving started"), false};
+    }
+
+    CommandResult handle_lastsave(const std::vector<std::string>& args) {
+        if (args.size() != 1) {
+            return {Resp::error("wrong number of arguments for 'lastsave' command"), false};
+        }
+        uint64_t t = snapshot_mgr_ ? snapshot_mgr_->last_save_time() : 0;
+        return {Resp::integer(static_cast<long long>(t)), false};
+    }
+
+    CommandResult handle_bgrewriteaof(const std::vector<std::string>& args) {
+        if (args.size() != 1) {
+            return {Resp::error("wrong number of arguments for 'bgrewriteaof' command"), false};
+        }
+        if (!aof_mgr_ || !aof_mgr_->is_enabled()) {
+            return {Resp::error("Background append only file rewriting not enabled"), false};
+        }
+        if (aof_mgr_->is_rewriting()) {
+            return {Resp::error("Background append only file rewriting already in progress"), false};
+        }
+        if (!aof_mgr_->rewrite_async(store_)) {
+            return {Resp::error("ERR failed to start background AOF rewrite"), false};
+        }
+        return {Resp::simple_string("Background append only file rewriting started"), false};
     }
 };
 

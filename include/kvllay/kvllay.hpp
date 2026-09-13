@@ -6,6 +6,8 @@
 #include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
+#include <snapshot.hpp>
+#include <aof.hpp>
 #include <commands.hpp>
 #include <server.hpp>
 

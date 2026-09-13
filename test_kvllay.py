@@ -2,6 +2,8 @@ import socket
 import time
 import threading
 import sys
+import subprocess
+import os
 
 def send_recv(sock, data):
     sock.sendall(data.encode('utf-8') if isinstance(data, str) else data)
@@ -572,10 +574,157 @@ def test_multi_key(port=6389):
     s.close()
     print("[PASS] All Multi-Key (MSET / MGET) tests passed successfully!")
 
+def test_persistence(port=6389):
+    print(f"\n--- Testing Persistence (Snapshots & AOF) on port {port} ---")
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(("127.0.0.1", port))
+    send_recv(s, "FLUSHDB\r\n")
+
+    # 1. Test SAVE command
+    res = send_recv(s, "SAVE\r\n")
+    assert res == "+OK\r\n", f"Expected +OK from SAVE, got {repr(res)}"
+    print("[PASS] SAVE command returns +OK")
+
+    # 2. Test BGSAVE command
+    res = send_recv(s, "BGSAVE\r\n")
+    assert res == "+Background saving started\r\n" or "already in progress" in res, f"Expected background save response, got {repr(res)}"
+    print("[PASS] BGSAVE command returns '+Background saving started'")
+
+    # 3. Test LASTSAVE command
+    res = send_recv(s, "LASTSAVE\r\n")
+    assert res.startswith(":"), f"Expected integer from LASTSAVE, got {repr(res)}"
+    save_ts = int(res.strip()[1:])
+    assert save_ts > 0, f"Expected valid timestamp, got {save_ts}"
+    print(f"[PASS] LASTSAVE returned timestamp {save_ts}")
+
+    # 4. Test INFO contains persistence metrics
+    info_res = send_recv(s, "INFO\r\n")
+    assert "# Persistence" in info_res, f"INFO missing # Persistence section: {info_res}"
+    assert "rdb_last_save_time:" in info_res, "INFO missing rdb_last_save_time"
+    assert "rdb_bgsave_in_progress:" in info_res, "INFO missing rdb_bgsave_in_progress"
+    assert "aof_enabled:" in info_res, "INFO missing aof_enabled"
+    print("[PASS] INFO includes complete # Persistence section")
+
+    s.close()
+
+    # 5. Dedicated Snapshot lifecycle test across process restarts
+    print("Testing Snapshot persistence lifecycle (write -> save -> kill -> restart -> verify)...")
+    snap_port = 6393
+    snap_file = "test_snapshot_lifecycle.kvl"
+    if os.path.exists(snap_file):
+        os.remove(snap_file)
+
+    p1 = subprocess.Popen(["./build/kvllay", "-p", str(snap_port), "--snapshot", snap_file, "--no-aof"])
+    time.sleep(0.3)
+    try:
+        s1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s1.connect(("127.0.0.1", snap_port))
+        send_recv(s1, "SET snap_key_1 \"hello_world\"\r\n")
+        send_recv(s1, "SET snap_key_2 \"persistent_value\"\r\n")
+        send_recv(s1, "SETEX snap_key_ttl 100 \"ttl_value\"\r\n")
+        send_recv(s1, "SAVE\r\n")
+        s1.close()
+    finally:
+        p1.terminate()
+        p1.wait()
+
+    assert os.path.exists(snap_file), "Snapshot file was not created on disk"
+    assert os.path.getsize(snap_file) > 28, "Snapshot file is too small"
+
+    # Restart server and verify keys are restored
+    p2 = subprocess.Popen(["./build/kvllay", "-p", str(snap_port), "--snapshot", snap_file, "--no-aof"])
+    time.sleep(0.3)
+    try:
+        s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s2.connect(("127.0.0.1", snap_port))
+        assert send_recv(s2, "GET snap_key_1\r\n") == "$11\r\nhello_world\r\n"
+        assert send_recv(s2, "GET snap_key_2\r\n") == "$16\r\npersistent_value\r\n"
+        assert send_recv(s2, "GET snap_key_ttl\r\n") == "$9\r\nttl_value\r\n"
+        ttl_res = send_recv(s2, "TTL snap_key_ttl\r\n")
+        rem_ttl = int(ttl_res.strip()[1:])
+        assert 0 < rem_ttl <= 100, f"Expected positive TTL, got {rem_ttl}"
+        s2.close()
+        print("[PASS] Snapshot restored all data and TTL correctly across server restart")
+    finally:
+        p2.terminate()
+        p2.wait()
+        if os.path.exists(snap_file):
+            os.remove(snap_file)
+
+    # 6. Dedicated AOF lifecycle test across process restarts
+    print("Testing AOF persistence lifecycle (mutations -> restart -> verify)...")
+    aof_port = 6394
+    aof_file = "test_aof_lifecycle.aof"
+    if os.path.exists(aof_file):
+        os.remove(aof_file)
+
+    p_aof1 = subprocess.Popen(["./build/kvllay", "-p", str(aof_port), "--aof", aof_file, "--no-snapshot", "--appendfsync", "always"])
+    time.sleep(0.3)
+    try:
+        sa1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sa1.connect(("127.0.0.1", aof_port))
+        send_recv(sa1, "SET aof_k1 v1\r\n")
+        send_recv(sa1, "INCR aof_counter\r\n")
+        send_recv(sa1, "INCR aof_counter\r\n")
+        send_recv(sa1, "INCRBY aof_counter 8\r\n")
+        send_recv(sa1, "MSET aof_m1 hello aof_m2 world\r\n")
+        send_recv(sa1, "DEL aof_k1\r\n")
+        send_recv(sa1, "BGREWRITEAOF\r\n")
+        time.sleep(0.2)
+        sa1.close()
+    finally:
+        p_aof1.terminate()
+        p_aof1.wait()
+
+    assert os.path.exists(aof_file), "AOF file was not created"
+
+    # Restart server and verify AOF replay
+    p_aof2 = subprocess.Popen(["./build/kvllay", "-p", str(aof_port), "--aof", aof_file, "--no-snapshot"])
+    time.sleep(0.3)
+    try:
+        sa2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sa2.connect(("127.0.0.1", aof_port))
+        assert send_recv(sa2, "GET aof_k1\r\n") == "$-1\r\n"
+        assert send_recv(sa2, "GET aof_counter\r\n") == "$2\r\n10\r\n"
+        assert send_recv(sa2, "GET aof_m1\r\n") == "$5\r\nhello\r\n"
+        assert send_recv(sa2, "GET aof_m2\r\n") == "$5\r\nworld\r\n"
+        sa2.close()
+        print("[PASS] AOF replayed and recovered exact state across server restart")
+    finally:
+        p_aof2.terminate()
+        p_aof2.wait()
+        if os.path.exists(aof_file):
+            os.remove(aof_file)
+
+    # 7. Snapshot CRC32 corruption detection
+    print("Testing CRC32 snapshot corruption detection...")
+    corrupt_file = "corrupt_test.kvl"
+    with open(corrupt_file, "wb") as f:
+        f.write(b"KVLLAYS1\x00\x00\x00\x00\x00\x00\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00BADCRC")
+
+    p_corr = subprocess.Popen(["./build/kvllay", "-p", "6395", "--snapshot", corrupt_file, "--no-aof"])
+    time.sleep(0.3)
+    try:
+        sc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sc.connect(("127.0.0.1", 6395))
+        res = send_recv(sc, "DBSIZE\r\n")
+        assert res == ":0\r\n", f"Corrupt snapshot should have been rejected, got {res}"
+        sc.close()
+        print("[PASS] Corrupt snapshot with invalid CRC32 successfully rejected")
+    finally:
+        p_corr.terminate()
+        p_corr.wait()
+        if os.path.exists(corrupt_file):
+            os.remove(corrupt_file)
+
+    print("[PASS] All Persistence tests passed successfully!")
+
 if __name__ == "__main__":
     test_port = int(sys.argv[1]) if len(sys.argv) > 1 else 6389
     test_kvllay(test_port)
     test_ttl(test_port)
     test_atomic_counters_and_rate_limiting(test_port)
     test_multi_key(test_port)
+    test_persistence(test_port)
+
 

@@ -29,6 +29,13 @@ inline constexpr size_t DEFAULT_EVICTION_BATCH_LIMIT = 100;
 // Protocol Constants
 inline constexpr const char* CRLF = "\r\n";
 
+// Persistence Defaults
+inline constexpr const char* DEFAULT_SNAPSHOT_FILE = "dump.kvl";
+inline constexpr const char* DEFAULT_AOF_FILE = "kvllay.aof";
+inline constexpr uint64_t DEFAULT_SAVE_INTERVAL_SECS = 0; // 0 = disabled (manual only)
+inline constexpr uint64_t DEFAULT_SAVE_CHANGES = 100;
+inline constexpr size_t AOF_BUFFER_FLUSH_INTERVAL_MS = 50;
+
 } // namespace constants
 } // namespace kvllay
 

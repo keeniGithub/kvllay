@@ -35,10 +35,17 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `SETEX key seconds value`
   - `INCR key` / `DECR key`
   - `INCRBY key increment` / `DECRBY key decrement`
+  - `SAVE` (synchronous snapshot)
+  - `BGSAVE` (background snapshot without `fork()`)
+  - `LASTSAVE` (UNIX epoch timestamp of last save)
+  - `BGREWRITEAOF` (background AOF compaction without `fork()`)
   - `ECHO message`
   - `COMMAND` / `COMMAND DOCS` (redis-cli handshake)
-  - `INFO`
+  - `INFO` (includes `# Persistence`)
   - `QUIT`
+- **Zero-Fork Persistence (Snapshots & AOF)**:
+  - **Snapshots (`dump.kvl`)**: Compact binary format with CRC32 data integrity, atomic file rename, and zero `fork()` (no page-table pauses or Copy-On-Write memory doubling).
+  - **Append-Only Log (`kvllay.aof`)**: Asynchronous double-buffered logger with configurable fsync (`always`, `everysec`, `no`), decoupling client request latency from disk I/O.
 - **Atomic Counters & Rate Limiting**: thread-safe counters with overflow checks for high-throughput rate limiters.
 - **Thread Safety**: `std::shared_mutex` (fast concurrent reads with `GET`, synchronized writes with `SET`/`DEL`).
 - **TTL & Eviction**: Hybrid passive (`Lazy`) + active background garbage collector.
@@ -78,6 +85,15 @@ make run
 
 # Restrict access to localhost only
 ./build/kvllay -p 6379 -h 127.0.0.1
+
+# Run with periodic background snapshot (every 60 seconds)
+./build/kvllay -p 6379 --save 60
+
+# Run with Append-Only Log (AOF) persistence (fsync every second)
+./build/kvllay -p 6379 --aof kvllay.aof --appendfsync everysec
+
+# Run with both snapshots and AOF
+./build/kvllay -p 6379 --snapshot dump.kvl --aof
 
 # View all options
 ./build/kvllay --help
