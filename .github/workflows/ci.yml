@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 1.0.0 ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, 1.0.0 ]
   workflow_dispatch:
 
 jobs:
@@ -61,3 +61,25 @@ jobs:
           } finally {
             Stop-Process -Id $process.Id -Force
           }
+
+  test-website:
+    name: Test Website Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: website/package-lock.json
+
+      - name: Install dependencies
+        working-directory: website
+        run: npm ci
+
+      - name: Build website
+        working-directory: website
+        run: npm run build

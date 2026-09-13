@@ -1,0 +1,101 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/geist";
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  color-scheme: dark;
+  --background: #070A10;
+  --foreground: #F0F6FC;
+  
+  --card: #0E131F;
+  --card-foreground: #F0F6FC;
+  --card-subtle: #0A0E17;
+  
+  --popover: #0E131F;
+  --popover-foreground: #F0F6FC;
+  
+  --primary: #00D2FF;
+  --primary-foreground: #08090E;
+  
+  --secondary: #0E131F;
+  --secondary-foreground: #F0F6FC;
+  
+  --muted: #0A0E17;
+  --muted-foreground: #8B9BB4;
+  --muted-text: #546682;
+  
+  --accent: rgba(0, 210, 255, 0.1);
+  --accent-foreground: #00D2FF;
+  --accent-redis: #D53026;
+  --accent-redis-subtle: rgba(213, 48, 38, 0.1);
+  
+  --destructive: #F43F5E;
+  --border: #1B2436;
+  --border-focus: #1E3B5C;
+  --input: #1B2436;
+  --ring: #00D2FF;
+  
+  --radius: 0.625rem;
+  
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+html {
+  scroll-behavior: smooth;
+  background-color: #070A10;
+  color: #F0F6FC;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #070A10;
+  color: #F0F6FC;
+  font-family: var(--font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+code, pre {
+  font-family: var(--font-mono);
+}
+
+@theme inline {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, monospace;
+  --color-canvas: #070A10;
+  --color-surface-card: #0E131F;
+  --color-surface-subtle: #0A0E17;
+  --color-border-subtle: #1B2436;
+  --color-border-focus: #1E3B5C;
+  --color-text-primary: #F0F6FC;
+  --color-text-secondary: #8B9BB4;
+  --color-text-muted: #546682;
+  --color-accent-cyan: #00D2FF;
+  --color-accent-cyan-subtle: rgba(0, 210, 255, 0.1);
+  --color-accent-redis: #D53026;
+  --color-accent-redis-subtle: rgba(213, 48, 38, 0.1);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}

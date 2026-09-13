@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: kvllay:latest
+    image: kenyka/kvllay:latest
     container_name: kvllay
     ports:
       - "6379:6379"
