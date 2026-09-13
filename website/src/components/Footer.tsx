@@ -1,10 +1,11 @@
 import logoImg from "@root/logo.png"
 import { links } from "@/config/links"
+import { Reveal } from "@/components/ui/Reveal"
 
 export function Footer() {
   return (
     <footer className="w-full border-t border-[#1B2436] bg-[#070A10] mt-auto">
-      <div className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 flex flex-col md:flex-row justify-between items-start gap-8 md:gap-10">
+      <Reveal direction="up" delay={50} className="max-w-[1240px] mx-auto px-4 sm:px-6 lg:px-10 py-8 sm:py-12 flex flex-col md:flex-row justify-between items-start gap-8 md:gap-10">
         <div className="flex flex-col gap-2.5 max-w-[320px]">
           <div className="flex items-center gap-2.5">
             <div className="w-7.5 sm:w-8 h-7.5 sm:h-8 rounded-lg overflow-hidden flex items-center justify-center">
@@ -61,7 +62,7 @@ export function Footer() {
               rel="noreferrer"
               className="text-[12.5px] sm:text-[13px] text-[#8B9BB4] hover:text-[#00D2FF] transition-colors"
             >
-              Russian Guide (ru.md)
+              Russian Docs (ru.md)
             </a>
             <a
               href={links.docsEn}
@@ -69,7 +70,7 @@ export function Footer() {
               rel="noreferrer"
               className="text-[12.5px] sm:text-[13px] text-[#8B9BB4] hover:text-[#00D2FF] transition-colors"
             >
-              English Guide (en.md)
+              English Docs (en.md)
             </a>
             <a
               href={links.redisProtocolSpec}
@@ -111,7 +112,7 @@ export function Footer() {
             </a>
           </div>
         </div>
-      </div>
+      </Reveal>
     </footer>
   )
 }

@@ -33,13 +33,17 @@ website/
 │   │   ├── Quickstart.tsx      # Equal-height installation cards (Docker, Binaries, Source)
 │   │   ├── Documentation.tsx   # Guides overview, repo links, and animated mascot preview
 │   │   ├── CtaBanner.tsx       # Bottom conversion block with animated mascot and star button
-│   │   └── Footer.tsx          # Navigation links, licenses, Docker Hub, and copyright
+│   │   ├── Footer.tsx          # Navigation links, licenses, Docker Hub, and copyright
+│   │   └── ui/
+│   │       ├── button.tsx      # Base UI button with variants
+│   │       └── Reveal.tsx      # Scroll reveal wrapper with directions, delays, and GPU transitions
 │   ├── config/
 │   │   ├── links.ts            # Centralized external links and repository URLs
 │   │   ├── paths.ts            # Centralized internal paths, section IDs, and public asset URLs
 │   │   └── route.ts            # Route configuration re-exporting paths
 │   ├── lib/
-│   │   └── useGithubStars.ts   # Hook for GitHub API star fetching, caching, and skeleton state
+│   │   ├── useGithubStars.ts   # Hook for GitHub API star fetching, caching, and skeleton state
+│   │   └── useScrollReveal.ts  # IntersectionObserver hook with reduced-motion support for scroll animations
 │   ├── App.tsx                 # Root application component orchestrating all page sections
 │   ├── index.css               # Global styles, Tailwind v4 import, scrollbars, and font declarations
 │   └── main.tsx                # Client entrypoint mounting React tree
@@ -150,6 +154,16 @@ All visual sections are divided into isolated, reusable components inside `src/c
   - Fetches fresh data from `https://api.github.com/repos/{owner}/{repo}` asynchronously.
   - If fetch fails or rate limit is reached, gracefully falls back to cached value or sensible default (`42`).
   - Helper `formatStars(count)`: Formats numbers (e.g. `1250` -> `"1.3k"`).
+
+### `useScrollReveal` & `Reveal` (`src/lib/useScrollReveal.ts`, `src/components/ui/Reveal.tsx`)
+- **Hook**: `useScrollReveal<T>({ threshold, rootMargin, once })`
+  - High-performance `IntersectionObserver` observing DOM visibility.
+  - Respects OS `prefers-reduced-motion` settings.
+  - Unobserves elements once revealed (`once = true`) to minimize CPU/runtime overhead.
+- **Component**: `<Reveal direction="..." delay={ms} duration={ms} distance={px} once={true} as="...">`
+  - Directions: `up`, `down`, `left`, `right`, `scale`, `fade`.
+  - Staggered cascading appearance via `delay={idx * ms}` on grids and lists.
+  - Pure GPU-accelerated CSS transitions (`opacity`, `transform`) using spring-style `cubic-bezier(0.16, 1, 0.3, 1)`.
 
 ---
 

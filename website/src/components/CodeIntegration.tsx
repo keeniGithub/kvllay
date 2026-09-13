@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { IconCheck, IconCopy } from "@tabler/icons-react"
 import { paths } from "@/config/paths"
+import { Reveal } from "@/components/ui/Reveal"
 
 export function CodeIntegration() {
   const [activeTab, setActiveTab] = useState<"python" | "node" | "go">("python")
@@ -78,7 +79,7 @@ func main() {
 
   return (
     <section id={paths.sections.integrations} className="w-full flex flex-col items-center py-10 sm:py-16 px-4 sm:px-6 lg:px-10 max-w-[1240px] mx-auto scroll-mt-20">
-      <div className="flex flex-col items-center text-center gap-2.5 sm:gap-3 mb-8 sm:mb-12">
+      <Reveal direction="up" className="flex flex-col items-center text-center gap-2.5 sm:gap-3 mb-8 sm:mb-12">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00D2FF]/10 border border-[#00D2FF]/30">
           <span className="text-[11px] font-mono font-bold text-[#00D2FF] tracking-wider uppercase">
             DEVELOPER INTEGRATION
@@ -90,10 +91,10 @@ func main() {
         <p className="text-sm sm:text-base text-[#8B9BB4] max-w-[780px] leading-[1.6]">
           Kvllay speaks Redis RESP2 natively. Keep using your favorite drivers, ORMs, and libraries without downloading proprietary wrappers.
         </p>
-      </div>
+      </Reveal>
 
       <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-10 items-center">
-        <div className="md:col-span-5 flex flex-col gap-4 sm:gap-5">
+        <Reveal direction="left" delay={60} className="md:col-span-5 flex flex-col gap-4 sm:gap-5">
           {sdks.map((item) => (
             <div key={item.title} className="flex items-start gap-3 sm:gap-3.5">
               <div className="w-7.5 sm:w-8 h-7.5 sm:h-8 rounded-lg bg-[#0E131F] border border-[#1B2436] flex items-center justify-center shrink-0 mt-0.5">
@@ -105,9 +106,9 @@ func main() {
               </div>
             </div>
           ))}
-        </div>
+        </Reveal>
 
-        <div className="md:col-span-7 w-full bg-[#0B0E17] border border-[#1E3B5C] rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+        <Reveal direction="right" delay={120} className="md:col-span-7 w-full bg-[#0B0E17] border border-[#1E3B5C] rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
           <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 bg-[#0A0E17] border-b border-[#1B2436]">
             <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5">
               <button
@@ -218,7 +219,7 @@ func main() {
               </div>
             )}
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   )

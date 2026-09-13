@@ -2,13 +2,15 @@ import { IconStar, IconDownload, IconBook2 } from "@tabler/icons-react"
 import { useGithubStars, formatStars } from "@/lib/useGithubStars"
 import { links } from "@/config/links"
 import { paths } from "@/config/paths"
+import { Reveal } from "@/components/ui/Reveal"
 
 export function CtaBanner() {
   const { stars, isLoading } = useGithubStars()
 
   return (
     <section className="w-full py-8 sm:py-12 px-4 sm:px-6 lg:px-10 max-w-[1240px] mx-auto">
-      <div className="w-full bg-[#0E131F] border border-[#1E3B5C] rounded-xl sm:rounded-2xl p-6 sm:p-12 lg:p-14 flex flex-col items-center text-center gap-4 sm:gap-6 shadow-[0_25px_60px_rgba(0,0,0,0.6)] relative overflow-hidden">
+      <Reveal direction="scale" delay={50} className="w-full">
+        <div className="w-full bg-[#0E131F] border border-[#1E3B5C] rounded-xl sm:rounded-2xl p-6 sm:p-12 lg:p-14 flex flex-col items-center text-center gap-4 sm:gap-6 shadow-[0_25px_60px_rgba(0,0,0,0.6)] relative overflow-hidden">
         <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-48 bg-[#00D2FF]/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative w-20 sm:w-28 h-auto object-contain drop-shadow-[0_8px_24px_rgba(0,210,255,0.35)]">
@@ -73,6 +75,7 @@ export function CtaBanner() {
           </a>
         </div>
       </div>
+      </Reveal>
     </section>
   )
 }
