@@ -217,7 +217,7 @@ export function Comparison() {
             <div>
               <h3 className="text-lg sm:text-2xl font-bold text-[#F0F6FC]">Visual Performance Graphs</h3>
               <p className="text-xs sm:text-[13px] text-[#8B9BB4] mt-0.5">
-                Official benchmark results against Redis 7.x (redis-benchmark & stress tests)
+                Official benchmark results against Redis 8.x (redis-benchmark & stress tests)
               </p>
             </div>
 
@@ -229,7 +229,7 @@ export function Comparison() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-[#D53026]" />
-                  <span className="text-[#8B9BB4]">Redis 7.x</span>
+                  <span className="text-[#8B9BB4]">Redis 8.x</span>
                 </div>
               </div>
 
@@ -329,7 +329,7 @@ export function Comparison() {
               <tr className="bg-[#0A0E17] border-b border-[#1B2436] text-[11px] sm:text-[12px] font-mono">
                 <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#546682]">WORKLOAD / METRIC</th>
                 <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#00D2FF]">KVLLAY V1.0.0</th>
-                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#8B9BB4]">REDIS 7.x</th>
+                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#8B9BB4]">REDIS 8.x</th>
                 <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#546682]">COMPARISON RESULT</th>
               </tr>
             </thead>
