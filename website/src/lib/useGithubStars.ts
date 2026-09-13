@@ -18,7 +18,7 @@ function getCachedStars(): number | null {
   return null
 }
 
-export function useGithubStars(owner = "keeniGithub", repo = "kvllay") {
+export function useGithubStars(owner = "thekeny", repo = "kvllay") {
   const [stars, setStars] = useState<number | null>(getCachedStars)
   const [isLoading, setIsLoading] = useState(() => getCachedStars() === null)
 

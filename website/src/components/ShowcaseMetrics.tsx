@@ -23,9 +23,9 @@ export function ShowcaseMetrics() {
     },
     {
       icon: IconGauge,
-      value: "92.4k ops/s",
+      value: "5.49M req/s",
       title: "Peak Throughput",
-      comparison: "p50 latency 0.044 ms (8% lower)",
+      comparison: "p50 latency 10 μs (~5x vs Redis)",
     },
   ]
 

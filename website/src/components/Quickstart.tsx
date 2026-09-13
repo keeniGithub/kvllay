@@ -19,7 +19,7 @@ export function Quickstart() {
   const binaryCode = `./kvllay-linux-x86_64 -p 6379
 .\\kvllay-windows-x86_64.exe`
 
-  const sourceCode = `git clone github.com/keeniGithub/kvllay
+  const sourceCode = `git clone github.com/thekeny/kvllay
 cd kvllay && make compile
 ./build/kvllay -p 6379`
 
@@ -136,7 +136,7 @@ cd kvllay && make compile
             </div>
 
             <div className="relative bg-[#0B0E17] border border-[#1B2436] rounded-lg p-3 sm:p-3.5 font-mono text-[11px] sm:text-[11.5px] text-[#F0F6FC] flex flex-col gap-1.5 group">
-              <div className="text-[#F0F6FC]">git clone github.com/keeniGithub/kvllay</div>
+              <div className="text-[#F0F6FC]">git clone github.com/thekeny/kvllay</div>
               <div className="text-[#F0F6FC]">cd kvllay &amp;&amp; make compile</div>
               <div className="text-[#00D2FF] font-medium">./build/kvllay -p 6379</div>
               <button

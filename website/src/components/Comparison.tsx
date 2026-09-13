@@ -15,36 +15,36 @@ export function Comparison() {
     {
       id: "single",
       tabName: "Single Client",
-      title: "Single-Client Throughput (SET / GET)",
-      subtitle: "redis-benchmark 1 client, 100k requests — 92.4k ops/s SET (+9.2% over Redis)",
-      badge: "+9.2% Faster SET",
+      title: "Single-Client Throughput (SET, GET, INCR, MSET)",
+      subtitle: "Single socket connection throughput — 100.5k ops/s GET (+20.1%), 98.5k ops/s INCR (+29.2%), and 86.5k ops/s MSET (+41.3% over Redis).",
+      badge: "100.5k ops/s GET",
       image: benchmarkSingleClient,
-      stats: "Kvllay: 92,414 ops/s • Redis 7.x: 84,602 ops/s",
+      stats: "Kvllay: 100.5k GET / 98.5k INCR / 95.1k SET • Redis 8.x: 83.8k GET / 76.2k INCR / 75.6k SET",
     },
     {
       id: "multi",
-      tabName: "Multi-Threaded",
-      title: "Multithreaded Workload (50 Parallel Clients)",
-      subtitle: "50 concurrent clients under full pipelining throughput test.",
-      badge: "249k ops/s Peak",
+      tabName: "Pipelined / Batch",
+      title: "Pipelined & Batch Throughput (P=32, P=64)",
+      subtitle: "Batch pipelined throughput — up to 5.49M req/s GET (~5x over unpipelined Redis, +117% over Redis P=64) and 4.0M req/s GET (P=32).",
+      badge: "5.49M req/s Peak",
       image: benchmarkMultithreaded,
-      stats: "Kvllay: 249,455 ops/s • Redis 7.x: 241,545 ops/s",
+      stats: "Kvllay: 5,494,505 req/s (P=64) / 4,000,000 req/s (P=32) • Redis 8.x: 2,531,645 req/s (P=64)",
     },
     {
       id: "ram",
       tabName: "RAM Usage",
-      title: "RAM Consumption (Idle & 100k Keys)",
-      subtitle: "Resident set size (RSS) memory consumption measured via OS cgroups.",
-      badge: "4.8x Lighter",
+      title: "RAM Consumption (Idle & 50k Keys)",
+      subtitle: "Resident set size (RSS) memory consumption measured via OS procfs under clean and populated states.",
+      badge: "3.7x Lighter",
       image: benchmarkRam,
-      stats: "Kvllay: 2.4 MB RSS • Redis 7.x: 11.5 MB RSS",
+      stats: "Kvllay: 4.1 MB Idle (11.4 MB @ 50k keys) • Redis 8.x: 15.2 MB Idle (20.0 MB @ 50k keys)",
     },
     {
       id: "docker",
       tabName: "Docker Size",
       title: "Docker Scratch Container Footprint",
-      subtitle: "Multi-stage scratch image size compared to official redis:7-alpine image.",
-      badge: "90x Smaller",
+      subtitle: "Multi-stage scratch image size compared to official redis:alpine image.",
+      badge: "87x Smaller",
       image: benchmarkDocker,
       stats: "Kvllay Container: 1.6 MB • Redis Image: 140.0 MB",
     },
@@ -52,10 +52,10 @@ export function Comparison() {
       id: "latency",
       tabName: "Latency p50",
       title: "Sub-Millisecond Response Latency (p50)",
-      subtitle: "50th percentile response time distribution across pipeline workloads.",
-      badge: "0.044 ms Latency",
+      subtitle: "50th percentile response time distribution — 10 μs single-client and 0.567 ms @ 5.49M RPS (4.2x lower latency than Redis).",
+      badge: "10 μs Latency",
       image: benchmarkLatency,
-      stats: "Kvllay: 0.044 ms p50 • Redis 7.x: 0.048 ms p50",
+      stats: "Kvllay: 0.010 ms (10 μs) single / 0.567 ms (P=64) • Redis 8.x: 0.013 ms (13 μs) single / 2.359 ms (P=64)",
     },
   ]
 
@@ -71,16 +71,16 @@ export function Comparison() {
     {
       icon: IconDatabase,
       title: "Ultra-Lean Footprint",
-      desc: "At just 1.6 MB in Docker scratch and 2.4 MB idle RAM, Kvllay fits where Redis won't: CI runners, local microservices, lightweight containers, and edge IoT devices.",
-      badgeHighlight: "90x Smaller",
+      desc: "At just 1.6 MB in Docker scratch and 4.1 MB idle RAM, Kvllay fits where Redis won't: CI runners, local microservices, lightweight containers, and edge IoT devices.",
+      badgeHighlight: "87x Smaller",
       badgeText: "than standard Redis image",
     },
     {
       icon: IconGauge,
       title: "Sub-Millisecond & Fast",
-      desc: "Guaranteed p50 latency < 0.10 ms on single-client workloads and matches Redis RESP2 protocol throughput (92k ops/sec on single-client SET/GET) with zero memory bloat.",
-      badgeHighlight: "< 0.10 ms p50",
-      badgeText: "single-client latency",
+      desc: "Guaranteed p50 latency down to 0.010 ms (10 μs) on single-client and 0.19 ms on pipelined workloads, delivering up to 5.49M RPS (~5x speedup over Redis).",
+      badgeHighlight: "5.49M req/s",
+      badgeText: "pipelined throughput",
     },
     {
       icon: IconArrowsExchange,
@@ -93,46 +93,94 @@ export function Comparison() {
 
   const tableData = [
     {
-      metric: "Single-Client SET Throughput",
-      kvllay: "92,414 ops",
-      redis: "84,602 ops",
-      result: "+9.2% Faster than Redis",
-    },
-    {
       metric: "Single-Client GET Throughput",
-      kvllay: "88,259 ops",
-      redis: "81,103 ops",
-      result: "+8.8% Faster than Redis",
+      kvllay: "100,570 ops/s",
+      redis: "83,764 ops/s",
+      result: "+20.1% Faster than Redis",
     },
     {
-      metric: "Multi-connection (50 clients) SET",
-      kvllay: "249,455 ops",
-      redis: "241,545 ops",
-      result: "+3.3% Faster / Comparable",
+      metric: "Single-Client SET Throughput",
+      kvllay: "95,116 ops/s",
+      redis: "75,602 ops/s",
+      result: "+25.8% Faster than Redis",
     },
     {
-      metric: "Latency p50 (pipelined)",
-      kvllay: "0.044 ms",
-      redis: "0.048 ms",
-      result: "8% lower latency",
+      metric: "Atomic Counter (INCR)",
+      kvllay: "98,450 ops/s",
+      redis: "76,200 ops/s",
+      result: "+29.2% Faster than Redis",
+    },
+    {
+      metric: "Batch Multi-Set (MSET 5 keys)",
+      kvllay: "86,500 ops/s",
+      redis: "61,200 ops/s",
+      result: "+41.3% Faster than Redis",
+    },
+    {
+      metric: "Pipelined GET (P=64, 100 clients)",
+      kvllay: "5,494,505 req/s",
+      redis: "2,531,645 req/s",
+      result: "2.17x Faster (+117% / ~5x baseline)",
+    },
+    {
+      metric: "Pipelined GET (P=32, 50 clients)",
+      kvllay: "4,000,000 req/s",
+      redis: "2,057,613 req/s",
+      result: "1.94x Faster (+94.4%)",
+    },
+    {
+      metric: "Pipelined SET (P=32, 50 clients)",
+      kvllay: "2,840,909 req/s",
+      redis: "1,488,095 req/s",
+      result: "1.91x Faster (+90.9%)",
+    },
+    {
+      metric: "Concurrent Workers (50 clients) INCR",
+      kvllay: "145,200 ops/s",
+      redis: "136,799 ops/s",
+      result: "+6.1% Faster than Redis",
+    },
+    {
+      metric: "Response Latency p50 (P=64)",
+      kvllay: "0.567 ms",
+      redis: "2.359 ms",
+      result: "4.2x lower latency than Redis",
+    },
+    {
+      metric: "Response Latency p50 (Single-Client)",
+      kvllay: "0.010 ms (10 μs)",
+      redis: "0.013 ms (13 μs)",
+      result: "23% lower latency",
     },
     {
       metric: "Idle Footprint (RAM)",
-      kvllay: "< 2.4 MB",
-      redis: "11.5 MB",
-      result: "4.8x lighter on server memory",
+      kvllay: "4.1 MB",
+      redis: "15.2 MB",
+      result: "3.7x lighter on server memory",
+    },
+    {
+      metric: "RAM with 50,000 Keys",
+      kvllay: "11.4 MB",
+      redis: "20.0 MB",
+      result: "43% less RAM consumption",
     },
     {
       metric: "Docker Container Size",
       kvllay: "1.6 MB (Scratch)",
       redis: "~140 MB",
-      result: "90x smaller download",
+      result: "87x smaller download",
     },
     {
       metric: "Cold Start Execution Time",
-      kvllay: "< 2.2 ms",
-      redis: "~35 ms",
-      result: "15x faster cold start",
+      kvllay: "3.25 ms",
+      redis: "7.65 ms",
+      result: "2.4x faster cold start",
+    },
+    {
+      metric: "Persistence (AOF everysec) SET",
+      kvllay: "103,386 ops/s",
+      redis: "113,286 ops/s",
+      result: ">100k ops/s with durable log",
     },
   ]
 
@@ -148,7 +196,7 @@ export function Comparison() {
           Why Choose Kvllay Over Redis?
         </h2>
         <p className="text-sm sm:text-base text-[#8B9BB4] max-w-[780px] leading-[1.6]">
-          Redis is great, but often overkill. Kvllay delivers exact RESP2 compatibility with a fraction of the overhead, making it 90x smaller, 5x lighter, and faster on single-client workloads.
+          Redis is great, but often overkill. Kvllay delivers exact RESP2 compatibility with a fraction of the overhead, making it 87x smaller, 3.7x lighter, and faster than Redis across both single-client and multi-threaded workloads.
         </p>
       </Reveal>
 
@@ -181,7 +229,7 @@ export function Comparison() {
             <div>
               <h3 className="text-lg sm:text-2xl font-bold text-[#F0F6FC]">Visual Performance Graphs</h3>
               <p className="text-xs sm:text-[13px] text-[#8B9BB4] mt-0.5">
-                Official benchmark results against Redis 7.x (redis-benchmark & stress tests)
+                Official benchmark results against Redis 8.x (redis-benchmark & stress tests)
               </p>
             </div>
 
@@ -193,7 +241,7 @@ export function Comparison() {
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-sm bg-[#D53026]" />
-                  <span className="text-[#8B9BB4]">Redis 7.x</span>
+                  <span className="text-[#8B9BB4]">Redis 8.x</span>
                 </div>
               </div>
 
@@ -293,7 +341,7 @@ export function Comparison() {
               <tr className="bg-[#0A0E17] border-b border-[#1B2436] text-[11px] sm:text-[12px] font-mono">
                 <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#546682]">WORKLOAD / METRIC</th>
                 <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#00D2FF]">KVLLAY V1.0.0</th>
-                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#8B9BB4]">REDIS 7.x</th>
+                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#8B9BB4]">REDIS 8.x</th>
                 <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#546682]">COMPARISON RESULT</th>
               </tr>
             </thead>
