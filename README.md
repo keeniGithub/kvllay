@@ -31,10 +31,13 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `TTL key` / `PTTL key`
   - `PERSIST key`
   - `SETEX key seconds value`
+  - `INCR key` / `DECR key`
+  - `INCRBY key increment` / `DECRBY key decrement`
   - `ECHO message`
   - `COMMAND` / `COMMAND DOCS` (redis-cli handshake)
   - `INFO`
   - `QUIT`
+- **Atomic Counters & Rate Limiting**: thread-safe counters with overflow checks for high-throughput rate limiters.
 - **Thread Safety**: `std::shared_mutex` (fast concurrent reads with `GET`, synchronized writes with `SET`/`DEL`).
 - **TTL & Eviction**: Hybrid passive (`Lazy`) + active background garbage collector.
 - **Ultra-Lightweight**: Docker image under **1.6 MB** (`scratch` static binary).
@@ -93,6 +96,10 @@ OK
 OK
 127.0.0.1:6379> TTL temp
 (integer) 60
+127.0.0.1:6379> INCR hits
+(integer) 1
+127.0.0.1:6379> INCRBY hits 10
+(integer) 11
 ```
 
 ### With password

@@ -20,7 +20,8 @@
    - [3.1 Connection & Security](#31-connection--security)
    - [3.2 String & Key Operations](#32-string--key-operations)
    - [3.3 TTL & Expiration Management](#33-ttl--expiration-management)
-   - [3.4 Database Administration & Diagnostics](#34-database-administration--diagnostics)
+   - [3.4 Atomic Counters & Rate Limiting](#34-atomic-counters--rate-limiting)
+   - [3.5 Database Administration & Diagnostics](#35-database-administration--diagnostics)
 4. [Building & Running](#4-building--running)
    - [4.1 Prebuilt Binaries (GitHub Releases)](#41-prebuilt-binaries-github-releases)
    - [4.2 Local Compilation](#42-local-compilation)
@@ -120,7 +121,34 @@ All commands are case-insensitive (`get`, `Get`, and `GET` are equivalent).
 | `PERSIST key` | Removes expiration timer | `PERSIST token` | `:1\r\n` (cleared), `:0\r\n` (no TTL/missing) |
 | `SETEX key seconds value` | Atomic set with TTL | `SETEX code 60 4829` | `+OK\r\n` |
 
-### 3.4 Database Administration & Diagnostics
+### 3.4 Atomic Counters & Rate Limiting
+
+Increment and decrement operations execute strictly atomically (thread-safely) under exclusive storage locks. If a key does not exist, it is initialized to `0` prior to mutation. If the key already has an active TTL, the expiration time is **preserved**.
+
+| Command | Description | Example | Response |
+| :--- | :--- | :--- | :--- |
+| `INCR key` | Atomically increments integer value by 1 | `INCR page_views` | `:<new_val>\r\n` |
+| `DECR key` | Atomically decrements integer value by 1 | `DECR available_slots`| `:<new_val>\r\n` |
+| `INCRBY key increment` | Atomically increments value by given integer | `INCRBY score 10` | `:<new_val>\r\n` |
+| `DECRBY key decrement` | Atomically decrements value by given integer | `DECRBY balance 50` | `:<new_val>\r\n` |
+
+> [!TIP]
+> **Rate Limiting Pattern (Fixed Window Counter):**
+> Combining `INCR` with `EXPIRE` enables the standard Fixed Window Rate Limiter with zero overhead:
+> ```bash
+> # On first request, initialize counter and set window expiration (e.g. 60 seconds):
+> 127.0.0.1:6379> INCR "ratelimit:ip:192.168.1.1"
+> (integer) 1
+> 127.0.0.1:6379> EXPIRE "ratelimit:ip:192.168.1.1" 60
+> (integer) 1
+>
+> # On subsequent requests within the window:
+> 127.0.0.1:6379> INCR "ratelimit:ip:192.168.1.1"
+> (integer) 2
+> # If the integer exceeds your threshold (e.g. 100 req/min), throttle the request.
+> ```
+
+### 3.5 Database Administration & Diagnostics
 
 | Command | Description | Example | Response |
 | :--- | :--- | :--- | :--- |

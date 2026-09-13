@@ -14,6 +14,9 @@
 #include <thread>
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
+#include <charconv>
+#include <limits>
 #include <constants.hpp>
 
 namespace kvllay {
@@ -42,6 +45,51 @@ public:
                 std::chrono::steady_clock::now().time_since_epoch()
             ).count()
         );
+    }
+
+    enum class IncrStatus {
+        Success,
+        NotAnInteger,
+        Overflow
+    };
+
+    static bool parse_int64(const std::string& str, int64_t& out) {
+        if (str.empty()) return false;
+        const char* start = str.data();
+        size_t len = str.size();
+        if (start[0] == '+') {
+            start++;
+            len--;
+            if (len == 0 || start[0] == '-' || start[0] == '+') return false;
+        }
+        auto [ptr, ec] = std::from_chars(start, start + len, out);
+        return ec == std::errc() && ptr == start + len;
+    }
+
+    static bool add_overflow(int64_t a, int64_t b, int64_t& result) {
+        if ((b > 0 && a > std::numeric_limits<int64_t>::max() - b) ||
+            (b < 0 && a < std::numeric_limits<int64_t>::min() - b)) {
+            return true;
+        }
+        result = a + b;
+        return false;
+    }
+
+    static bool sub_overflow(int64_t a, int64_t b, int64_t& result) {
+        if ((b > 0 && a < std::numeric_limits<int64_t>::min() + b) ||
+            (b < 0 && a > std::numeric_limits<int64_t>::max() + b)) {
+            return true;
+        }
+        result = a - b;
+        return false;
+    }
+
+    IncrStatus incrby(const std::string& key, int64_t delta, int64_t& result_val) {
+        return modify_int(key, delta, result_val, false);
+    }
+
+    IncrStatus decrby(const std::string& key, int64_t delta, int64_t& result_val) {
+        return modify_int(key, delta, result_val, true);
     }
 
     bool set(const std::string& key, const std::string& value) {
@@ -343,6 +391,40 @@ public:
     }
 
 private:
+    IncrStatus modify_int(const std::string& key, int64_t delta, int64_t& result_val, bool is_decrement) {
+        std::unique_lock<std::shared_mutex> lock(mutex_);
+        uint64_t now = current_time_ms();
+        auto it = data_.find(key);
+        if (it != data_.end() && it->second.expire_at != 0 && it->second.expire_at <= now) {
+            data_.erase(it);
+            keys_with_ttl_.erase(key);
+            it = data_.end();
+        }
+
+        int64_t current_val = 0;
+        if (it != data_.end()) {
+            if (!parse_int64(it->second.value, current_val)) {
+                return IncrStatus::NotAnInteger;
+            }
+        }
+
+        int64_t new_val = 0;
+        bool overflow = is_decrement ? sub_overflow(current_val, delta, new_val)
+                                     : add_overflow(current_val, delta, new_val);
+        if (overflow) {
+            return IncrStatus::Overflow;
+        }
+
+        if (it != data_.end()) {
+            it->second.value = std::to_string(new_val);
+        } else {
+            data_[key] = Entry{std::to_string(new_val), 0};
+        }
+
+        result_val = new_val;
+        return IncrStatus::Success;
+    }
+
     mutable std::shared_mutex mutex_;
     std::unordered_map<std::string, Entry> data_;
     std::unordered_set<std::string> keys_with_ttl_;

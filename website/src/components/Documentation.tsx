@@ -11,7 +11,7 @@ export function Documentation() {
     },
     {
       title: "Redis RESP2 Protocol Compatibility",
-      desc: "Complete reference for implemented commands (GET, SET, DEL, EXISTS, TTL, SETEX, DBSIZE, KEYS, AUTH, PING) and inline parsing.",
+      desc: "Complete reference for implemented commands (GET, SET, DEL, EXISTS, TTL, SETEX, INCR, DECR, DBSIZE, KEYS, AUTH, PING) and inline parsing.",
     },
     {
       title: "Benchmark Methodology & Repro",

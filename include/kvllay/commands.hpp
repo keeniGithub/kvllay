@@ -77,6 +77,14 @@ public:
             return handle_persist(args);
         } else if (cmd == "SETEX") {
             return handle_setex(args);
+        } else if (cmd == "INCR") {
+            return handle_incr(args);
+        } else if (cmd == "DECR") {
+            return handle_decr(args);
+        } else if (cmd == "INCRBY") {
+            return handle_incrby(args);
+        } else if (cmd == "DECRBY") {
+            return handle_decrby(args);
         }
 
         return {Resp::error("unknown command '" + args[0] + "'"), false};
@@ -270,6 +278,60 @@ private:
         }
         store_.setex(args[1], static_cast<uint64_t>(seconds) * 1000, args[3]);
         return {Resp::simple_string("OK"), false};
+    }
+
+    CommandResult format_incr_result(Store::IncrStatus status, int64_t result) {
+        if (status == Store::IncrStatus::Success) {
+            return {Resp::integer(result), false};
+        } else if (status == Store::IncrStatus::NotAnInteger) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        } else {
+            return {Resp::error("increment or decrement would overflow"), false};
+        }
+    }
+
+    CommandResult handle_incr(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'incr' command"), false};
+        }
+        int64_t result = 0;
+        auto status = store_.incrby(args[1], 1, result);
+        return format_incr_result(status, result);
+    }
+
+    CommandResult handle_decr(const std::vector<std::string>& args) {
+        if (args.size() != 2) {
+            return {Resp::error("wrong number of arguments for 'decr' command"), false};
+        }
+        int64_t result = 0;
+        auto status = store_.decrby(args[1], 1, result);
+        return format_incr_result(status, result);
+    }
+
+    CommandResult handle_incrby(const std::vector<std::string>& args) {
+        if (args.size() != 3) {
+            return {Resp::error("wrong number of arguments for 'incrby' command"), false};
+        }
+        int64_t delta = 0;
+        if (!Store::parse_int64(args[2], delta)) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        int64_t result = 0;
+        auto status = store_.incrby(args[1], delta, result);
+        return format_incr_result(status, result);
+    }
+
+    CommandResult handle_decrby(const std::vector<std::string>& args) {
+        if (args.size() != 3) {
+            return {Resp::error("wrong number of arguments for 'decrby' command"), false};
+        }
+        int64_t delta = 0;
+        if (!Store::parse_int64(args[2], delta)) {
+            return {Resp::error("value is not an integer or out of range"), false};
+        }
+        int64_t result = 0;
+        auto status = store_.decrby(args[1], delta, result);
+        return format_incr_result(status, result);
     }
 };
 

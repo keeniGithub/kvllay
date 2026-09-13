@@ -90,6 +90,16 @@
   - `ECHO message`: Returns argument as bulk string.
   - `COMMAND` / `COMMAND DOCS`: Returns `*0\r\n` to pass redis-cli handshake.
   - `INFO`: Returns server version, kvllay version, uptime in seconds, and keyspace count.
+  - `EXPIRE key seconds`: Sets key TTL in seconds.
+  - `PEXPIRE key milliseconds`: Sets key TTL in milliseconds.
+  - `TTL key`: Returns remaining TTL in seconds (-1: no TTL, -2: key not found).
+  - `PTTL key`: Returns remaining TTL in milliseconds.
+  - `PERSIST key`: Clears expiration timer on key.
+  - `SETEX key seconds value`: Sets key value with expiration in seconds atomically.
+  - `INCR key`: Atomically increments integer value by 1.
+  - `DECR key`: Atomically decrements integer value by 1.
+  - `INCRBY key increment`: Atomically increments integer value by given delta.
+  - `DECRBY key decrement`: Atomically decrements integer value by given delta.
 
 ### 4. Networking & Server (`include/kvllay/server.hpp`)
 - **Class**: `kvllay::Server`
