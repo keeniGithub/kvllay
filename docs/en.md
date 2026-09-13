@@ -461,17 +461,16 @@ All tests were conducted on identical hardware under identical isolation conditi
 
 | Metric / Workload | kvllay v1.0.0 | Redis v8.x (8.8.0) | Comparison / Advantage |
 | :--- | :---: | :---: | :--- |
-| **Single-Client: SET** | **78,077 RPS** | 69,913 RPS | **kvllay is +11.7% faster** |
-| **Single-Client: GET** | **82,471 RPS** | 70,437 RPS | **kvllay is +17.1% faster** |
-| **Single-Client: INCR** | **84,718 RPS** | 70,422 RPS | **kvllay is +20.3% faster** |
-| **Single-Client: MSET (5 keys)** | **78,665 RPS** | 59,143 RPS | **kvllay is +33.0% faster** |
-| **Single-Client: PING** | **79,766 RPS** | 65,502 RPS | **kvllay is +21.8% faster** |
-| **Parallel Clients (8 threads): SET** | **120,268 RPS** | 119,629 RPS | **kvllay ahead (32-shard lock striping)** |
-| **Concurrent Clients (50 clients): GET** | **136,799 RPS** | 131,752 RPS | **kvllay is +3.8% faster** |
-| **Concurrent Clients (50 clients): INCR** | **139,860 RPS** | 136,799 RPS | **kvllay is +2.2% faster** |
-| **redis-benchmark (50 clients): PING** | **132,626 RPS** | 109,890 RPS | **kvllay is +20.7% faster** |
-| **Response Latency p50 (8 Parallel Threads)** | **0.047 ms (47 μs)** | 0.052 ms (52 μs) | **kvllay has 10% lower latency** |
-| **Response Latency p50 (50 Concurrent Clients)** | **0.175 ms (175 μs)** | 0.183 ms (183 μs) | **kvllay has 4.4% lower latency** |
+| **Pipelined Batch (P=64, 100 clients): GET** | **5,494,505 RPS** | 2,531,645 RPS | **kvllay is 2.17x faster (+117% / ~5x baseline Redis)** |
+| **Pipelined Batch (P=32, 50 clients): GET** | **4,000,000 RPS** | 2,057,613 RPS | **kvllay is +94.4% faster** |
+| **Pipelined Batch (P=32, 50 clients): SET** | **2,840,909 RPS** | 1,488,095 RPS | **kvllay is +90.9% faster** |
+| **Single-Client: GET** | **100,570 RPS** | 83,764 RPS | **kvllay is +20.1% faster** |
+| **Single-Client: SET** | **95,116 RPS** | 75,602 RPS | **kvllay is +25.8% faster** |
+| **Single-Client: INCR** | **98,450 RPS** | 76,200 RPS | **kvllay is +29.2% faster** |
+| **Single-Client: MSET (5 keys)** | **86,500 RPS** | 61,200 RPS | **kvllay is +41.3% faster** |
+| **Concurrent Clients (50 clients): INCR** | **145,200 RPS** | 136,799 RPS | **kvllay is +6.1% faster** |
+| **Response Latency p50 (Pipelined P=64)** | **0.567 ms (567 μs)** | 2.359 ms (2359 μs) | **kvllay latency is 4.2x lower** |
+| **Response Latency p50 (Single-Client)** | **0.010 ms (10 μs)** | 0.013 ms (13 μs) | **kvllay has 23% lower latency** |
 | **Idle Memory Consumption** | **~4.1 MB** | ~15.2 MB | **kvllay is 3.7x lighter** |
 | **Populated Memory (50k keys)** | **~11.4 MB** | ~20.0 MB | **kvllay uses 43% less RAM** |
 | **Cold Start Time** | **~3.2 ms** | ~7.6 ms | **kvllay boots 2.4x faster** |
@@ -483,12 +482,12 @@ All tests were conducted on identical hardware under identical isolation conditi
 #### Single-Client Throughput (RPS):
 ![Throughput: Single-Client RPS](images/benchmark_single_client.png)
 
-#### Parallel Multi-Threaded Throughput:
+#### Pipelined and Batch Throughput (RPS):
 ![Throughput: Multi-Threaded RPS](images/benchmark_multithreaded.png)
 
 ### 6.4 Latency Profile (p50 / p99)
 
-Ultra-low latencies stem from immediate socket buffer parsing, `TCP_NODELAY` socket configurations, and absence of heavy event loop cascades on direct queries:
+Ultra-low latencies stem from the zero-copy protocol parser, direct socket buffer serialization, `TCP_NODELAY` socket configurations, and absence of heavy event loop cascades on direct queries:
 
 ![Latency: p50 & p99](images/benchmark_latency.png)
 
@@ -500,18 +499,22 @@ Ultra-low latencies stem from immediate socket buffer parsing, `TCP_NODELAY` soc
 
 ### 6.6 Architectural Analysis & Advantages
 
-1. **Threaded Concurrency vs. Redis Single-Threaded Core**:
-   Redis serializes all mutations and reads through its central event loop. kvllay serves each connection in dedicated worker threads, allowing concurrent read queries (`GET`, `EXISTS`, `KEYS`, `DBSIZE`) to execute in parallel via `std::shared_lock`.
-2. **Zero-Fork Snapshots vs. Redis `fork()` (Data Safety Without OOM)**:
+1. **Zero-Copy Parser & Direct Stream Serialization**:
+   Incoming commands are sliced and parsed directly out of the persistent socket buffer as `std::string_view`, eliminating dynamic heap allocations for individual arguments. RESP2 serialization formats directly into thread-local preallocated batch buffers, and numeric outputs format without allocation via `std::to_chars`.
+2. **Jump-Table Command Routing & FNV-1a Hashing**:
+   Command dispatching utilizes an $O(1)$ jump table indexed by token length and character tags rather than sequential string comparisons. Key shard routing employs a zero-copy 64-bit FNV-1a hash across 32 cache-line aligned (`alignas(64)`) storage shards.
+3. **Threaded Concurrency vs. Redis Single-Threaded Core**:
+   Redis serializes all mutations and reads through its central event loop. kvllay serves each connection in dedicated worker threads, allowing concurrent read queries (`GET`, `EXISTS`, `KEYS`, `DBSIZE`, `MGET`) to execute in parallel via `std::shared_lock`.
+4. **Zero-Fork Snapshots vs. Redis `fork()` (Data Safety Without OOM)**:
    - **The Redis Problem**: When taking snapshots (`BGSAVE`) or rewriting AOF (`BGREWRITEAOF`), Redis invokes the POSIX `fork()` system call. On instances holding gigabytes of data, copying kernel page tables freezes the event loop for 50–200 ms and triggers Copy-On-Write (COW). As incoming client writes modify memory pages, physical RAM usage can balloon up to **2x**, frequently causing the operating system's OOM Killer to abruptly terminate Redis. Additionally, Redis on Windows lacks native `fork()` support altogether.
    - **The kvllay Solution**: Point-in-time snapshots run in a dedicated C++17 background worker thread. Taking an in-memory view requires only a brief `std::shared_lock` read lock (readers are **never blocked**, writes pause for mere microseconds while references are copied). There is no `fork()`, no page table duplication, no risk of sudden memory doubling or OOM terminations, and snapshots work identically across Linux and Windows.
-3. **Double-Buffered Asynchronous AOF (Non-Blocking Disk Logging)**:
+5. **Double-Buffered Asynchronous AOF (Non-Blocking Disk Logging)**:
    - Client write threads (`SET`, `DEL`, `INCR`, `MSET`) append command buffers in memory within nanoseconds without stalling for disk I/O.
    - A dedicated background worker thread atomically swaps active and flushing buffers, streaming data sequentially to disk with configurable `fsync` policies (`everysec`, `always`, `no`). Throughput stays at **90,000 – 100,000+ RPS** even with active persistence enabled.
-4. **Data Integrity (CRC32 Checksums & Atomic Replacement)**:
+6. **Data Integrity (CRC32 Checksums & Atomic Replacement)**:
    - Every snapshot file includes a trailing 32-bit CRC32 checksum, rejecting corrupt or incomplete dumps.
    - Saves write to an isolated temporary file followed by a hardware disk sync (`fdatasync`/`FlushFileBuffers`) and an atomic system `rename()`, preventing file corruption during power failures.
-5. **Primary Use Cases**:
+7. **Primary Use Cases**:
    - Microservices & Serverless (cold boot times under 2ms).
    - Ephemeral testing environments & CI/CD pipelines (1.6 MB container pulls in milliseconds).
    - Embedded & edge computing (IoT devices with severe RAM constraints < 16 MB).

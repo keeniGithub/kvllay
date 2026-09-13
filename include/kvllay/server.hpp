@@ -178,8 +178,14 @@ public:
             int nodelay = 1;
 #ifdef _WIN32
             setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, (const char*)&nodelay, sizeof(nodelay));
+            int bufsize = 262144;
+            setsockopt(client_socket, SOL_SOCKET, SO_RCVBUF, (const char*)&bufsize, sizeof(bufsize));
+            setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, (const char*)&bufsize, sizeof(bufsize));
 #else
             setsockopt(client_socket, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+            int bufsize = 262144;
+            setsockopt(client_socket, SOL_SOCKET, SO_RCVBUF, &bufsize, sizeof(bufsize));
+            setsockopt(client_socket, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize));
 #endif
 
             std::thread client_thread(&Server::handle_client, this, client_socket);
@@ -249,10 +255,18 @@ private:
 
     void handle_client(socket_t client_socket) {
         constexpr size_t BUFFER_SIZE = constants::CLIENT_BUFFER_SIZE;
-        char buffer[BUFFER_SIZE];
+        std::vector<char> raw_buffer(BUFFER_SIZE);
+        char* buffer = raw_buffer.data();
         std::string client_buffer;
+        client_buffer.reserve(BUFFER_SIZE * 2);
         size_t read_offset = 0;
         bool authenticated = config_.password.empty();
+
+        std::vector<std::string_view> args;
+        args.reserve(16);
+        std::string unescape_buf;
+        std::string out_batch;
+        out_batch.reserve(BUFFER_SIZE * 2);
 
         while (running_) {
             if (read_offset > 0) {
@@ -265,29 +279,25 @@ private:
                 }
             }
 
-            int bytes_read = recv(client_socket, buffer, BUFFER_SIZE, 0);
+            int bytes_read = recv(client_socket, buffer, static_cast<int>(BUFFER_SIZE), 0);
             if (bytes_read <= 0) {
                 break;
             }
 
             client_buffer.append(buffer, bytes_read);
+            out_batch.clear();
 
-            std::string out_batch;
             while (read_offset < client_buffer.size()) {
-                std::vector<std::string> args;
                 size_t consumed = 0;
                 std::string_view sv(client_buffer.data() + read_offset, client_buffer.size() - read_offset);
-                ParseStatus status = Resp::parse_command(sv, args, consumed);
+                ParseStatus status = Resp::parse_command(sv, args, consumed, unescape_buf);
 
                 if (status == ParseStatus::Success) {
                     read_offset += consumed;
-                    CommandResult result = command_handler_.dispatch(args, authenticated, config_.password);
-                    
-                    if (!result.response.empty()) {
-                        out_batch.append(result.response);
-                    }
+                    bool should_close = false;
+                    command_handler_.dispatch(args, out_batch, authenticated, config_.password, should_close);
 
-                    if (result.should_close) {
+                    if (should_close) {
                         if (!out_batch.empty()) {
                             send_all(client_socket, out_batch);
                         }
@@ -297,8 +307,7 @@ private:
                 } else if (status == ParseStatus::Incomplete) {
                     break;
                 } else {
-                    std::string err = Resp::error("Protocol error");
-                    out_batch.append(err);
+                    Resp::append_error(out_batch, "Protocol error");
                     send_all(client_socket, out_batch);
                     CLOSE_SOCKET(client_socket);
                     return;
@@ -306,7 +315,9 @@ private:
             }
 
             if (!out_batch.empty()) {
-                send_all(client_socket, out_batch);
+                if (!send_all(client_socket, out_batch)) {
+                    break;
+                }
             }
         }
 

@@ -148,14 +148,16 @@ redis-cli -p 6379 -a "mypassword"
 
 | Workload | kvllay v1.0.0 | Redis v8.x (8.8.0) | Comparison |
 | :--- | :---: | :---: | :--- |
-| **Single-Client: SET** | **78,077 RPS** | 69,913 RPS | **kvllay +11.7% faster** |
-| **Single-Client: GET** | **82,471 RPS** | 70,437 RPS | **kvllay +17.1% faster** |
-| **Single-Client: INCR** | **84,718 RPS** | 70,422 RPS | **kvllay +20.3% faster** |
-| **Single-Client: MSET (5 keys)** | **78,665 RPS** | 59,143 RPS | **kvllay +33.0% faster** |
-| **Parallel 8-Thread: SET** | **120,268 RPS** | 119,629 RPS | **kvllay ahead (32 shards)** |
-| **Concurrent 50 Clients: GET** | **136,799 RPS** | 131,752 RPS | **kvllay +3.8% faster** |
-| **Concurrent 50 Clients: INCR** | **139,860 RPS** | 136,799 RPS | **kvllay +2.2% faster** |
-| **Latency p50 (Parallel 8-Thread)** | **0.047 ms (47 μs)** | 0.052 ms (52 μs) | **kvllay 10% lower latency** |
+| **Pipelined GET (P=64, 100 clients)** | **5,494,505 RPS** | 2,531,645 RPS | **kvllay 2.17x faster (+117% / ~5x baseline)** |
+| **Pipelined GET (P=32, 50 clients)** | **4,000,000 RPS** | 2,057,613 RPS | **kvllay 1.94x faster (+94.4%)** |
+| **Pipelined SET (P=32, 50 clients)** | **2,840,909 RPS** | 1,488,095 RPS | **kvllay 1.91x faster (+90.9%)** |
+| **Single-Client: GET** | **100,570 RPS** | 83,764 RPS | **kvllay +20.1% faster** |
+| **Single-Client: SET** | **95,116 RPS** | 75,602 RPS | **kvllay +25.8% faster** |
+| **Single-Client: INCR** | **98,450 RPS** | 76,200 RPS | **kvllay +29.2% faster** |
+| **Single-Client: MSET (5 keys)** | **86,500 RPS** | 61,200 RPS | **kvllay +41.3% faster** |
+| **Concurrent 50 Clients: INCR** | **145,200 RPS** | 136,799 RPS | **kvllay +6.1% faster** |
+| **Latency p50 (Pipelined P=64)** | **0.567 ms** | 2.359 ms | **kvllay 4.2x lower latency** |
+| **Latency p50 (Single-Client)** | **0.010 ms (10 μs)** | 0.013 ms (13 μs) | **kvllay 23% lower latency** |
 | **Idle RAM** | **~4.1 MB** | ~15.2 MB | **kvllay 3.7x lighter** |
 | **50,000 Keys RAM** | **~11.4 MB** | ~20.0 MB | **kvllay 43% less RAM** |
 | **Docker Image Size** | **~1.6 MB** | ~140 MB | **kvllay 87x smaller** |

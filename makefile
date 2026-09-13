@@ -3,7 +3,7 @@ SRC ?= src/main.cpp
 BUILD_DIR = build
 TARGET = $(BUILD_DIR)/kvllay$(EXE)
 
-CXXFLAGS = -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay
+CXXFLAGS = -std=c++17 -Wall -Wextra -O3 -march=native -flto -I header -I include -I include/kvllay
 LDFLAGS = 
 LDLIBS = 
 
@@ -42,12 +42,12 @@ compile:
 
 static-linux:
 	$(MKDIR)
-	$(CXX) $(SRC) -std=c++17 -Wall -Wextra -O2 -static -s -I header -I include -I include/kvllay -o $(BUILD_DIR)/kvllay-linux-x86_64 -pthread
+	$(CXX) $(SRC) -std=c++17 -Wall -Wextra -O3 -flto -static -s -I header -I include -I include/kvllay -o $(BUILD_DIR)/kvllay-linux-x86_64 -pthread
 
 static-windows:
 	$(MKDIR)
 	$(WINDRES) -I . $(RC_SRC) -O coff -o $(RC_OBJ)
-	$(CXX) $(SRC) $(RC_OBJ) -std=c++17 -Wall -Wextra -O2 -static -static-libgcc -static-libstdc++ -s -D _WIN32_WINNT=0x0A00 -I header -I include -I include/kvllay -o $(BUILD_DIR)/kvllay-windows-x86_64.exe -lws2_32
+	$(CXX) $(SRC) $(RC_OBJ) -std=c++17 -Wall -Wextra -O3 -flto -static -static-libgcc -static-libstdc++ -s -D _WIN32_WINNT=0x0A00 -I header -I include -I include/kvllay -o $(BUILD_DIR)/kvllay-windows-x86_64.exe -lws2_32
 
 run:
 	${RUN}

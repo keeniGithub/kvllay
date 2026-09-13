@@ -19,7 +19,7 @@ inline const std::string REDIS_VERSION_STRING = std::string(SERVER_NAME) + "-" +
 inline constexpr int DEFAULT_PORT = 6379;
 inline constexpr const char* DEFAULT_HOST = "0.0.0.0";
 
-inline constexpr size_t CLIENT_BUFFER_SIZE = 4096;
+inline constexpr size_t CLIENT_BUFFER_SIZE = 65536;
 
 inline constexpr uint64_t DEFAULT_EVICTION_INTERVAL_MS = 100;
 inline constexpr size_t DEFAULT_EVICTION_BATCH_LIMIT = 100;

@@ -166,6 +166,29 @@ public:
         }
     }
 
+    void append(const std::vector<std::string_view>& args) {
+        if (!enabled_ || args.empty()) {
+            return;
+        }
+
+        std::string serialized;
+        Resp::append_array_header(serialized, args.size());
+        for (const auto& a : args) {
+            Resp::append_bulk_string(serialized, a);
+        }
+
+        {
+            std::lock_guard<std::mutex> lock(buffer_mutex_);
+            active_buffer_.append(serialized);
+        }
+
+        if (fsync_policy_ == FsyncPolicy::Always) {
+            flush_sync();
+        } else {
+            cv_.notify_one();
+        }
+    }
+
     bool load(Store& store) {
         if (!enabled_) {
             return true;

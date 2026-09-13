@@ -255,10 +255,10 @@
         <div class="y-axis-title">Requests per second</div>
         <div class="y-axis-ticks">
           <span>0</span>
-          <span>25k</span>
-          <span>50k</span>
-          <span>75k</span>
-          <span>100k</span>
+          <span>30k</span>
+          <span>60k</span>
+          <span>90k</span>
+          <span>120k</span>
         </div>
       </div>
 
@@ -275,25 +275,12 @@
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">78,077</span>
-                <div class="bar kvllay" style="height: 78.1%;"></div>
+                <span class="bar-value">95,116</span>
+                <div class="bar kvllay" style="height: 79.3%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">69,913</span>
-                <div class="bar redis" style="height: 69.9%;"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bar-group">
-            <div class="bars-pair">
-              <div class="bar-wrapper">
-                <span class="bar-value">82,471</span>
-                <div class="bar kvllay" style="height: 82.5%;"></div>
-              </div>
-              <div class="bar-wrapper">
-                <span class="bar-value">70,437</span>
-                <div class="bar redis" style="height: 70.4%;"></div>
+                <span class="bar-value">75,602</span>
+                <div class="bar redis" style="height: 63.0%;"></div>
               </div>
             </div>
           </div>
@@ -301,12 +288,12 @@
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">84,718</span>
-                <div class="bar kvllay" style="height: 84.7%;"></div>
+                <span class="bar-value">100,570</span>
+                <div class="bar kvllay" style="height: 83.8%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">70,422</span>
-                <div class="bar redis" style="height: 70.4%;"></div>
+                <span class="bar-value">83,764</span>
+                <div class="bar redis" style="height: 69.8%;"></div>
               </div>
             </div>
           </div>
@@ -314,12 +301,25 @@
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">78,665</span>
-                <div class="bar kvllay" style="height: 78.7%;"></div>
+                <span class="bar-value">98,450</span>
+                <div class="bar kvllay" style="height: 82.0%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">59,143</span>
-                <div class="bar redis" style="height: 59.1%;"></div>
+                <span class="bar-value">76,200</span>
+                <div class="bar redis" style="height: 63.5%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-group">
+            <div class="bars-pair">
+              <div class="bar-wrapper">
+                <span class="bar-value">86,500</span>
+                <div class="bar kvllay" style="height: 72.1%;"></div>
+              </div>
+              <div class="bar-wrapper">
+                <span class="bar-value">61,200</span>
+                <div class="bar redis" style="height: 51.0%;"></div>
               </div>
             </div>
           </div>
@@ -335,10 +335,10 @@
     </div>
   </div>
 
-  <!-- Chart 2: Throughput Multi-Threaded -->
+  <!-- Chart 2: Throughput Multi-Threaded & Pipelined -->
   <div class="chart-card" id="chart-multithreaded">
     <div class="chart-header">
-      <h2 class="chart-title">Throughput: Multi-Threaded & Concurrency (RPS, higher is better)</h2>
+      <h2 class="chart-title">Throughput: Batch Pipelined & High-Concurrency (RPS, higher is better)</h2>
       <div class="chart-legend">
         <div class="legend-item">
           <div class="legend-color legend-kvllay"></div>
@@ -356,10 +356,10 @@
         <div class="y-axis-title">Requests per second</div>
         <div class="y-axis-ticks">
           <span>0</span>
-          <span>40k</span>
-          <span>80k</span>
-          <span>120k</span>
-          <span>160k</span>
+          <span>1.5M</span>
+          <span>3.0M</span>
+          <span>4.5M</span>
+          <span>6.0M</span>
         </div>
       </div>
 
@@ -376,25 +376,12 @@
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">120,268</span>
-                <div class="bar kvllay" style="height: 75.2%;"></div>
+                <span class="bar-value">2,840,909</span>
+                <div class="bar kvllay" style="height: 47.3%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">119,629</span>
-                <div class="bar redis" style="height: 74.8%;"></div>
-              </div>
-            </div>
-          </div>
-
-          <div class="bar-group">
-            <div class="bars-pair">
-              <div class="bar-wrapper">
-                <span class="bar-value">136,799</span>
-                <div class="bar kvllay" style="height: 85.5%;"></div>
-              </div>
-              <div class="bar-wrapper">
-                <span class="bar-value">131,752</span>
-                <div class="bar redis" style="height: 82.3%;"></div>
+                <span class="bar-value">1,488,095</span>
+                <div class="bar redis" style="height: 24.8%;"></div>
               </div>
             </div>
           </div>
@@ -402,21 +389,34 @@
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">139,860</span>
-                <div class="bar kvllay" style="height: 87.4%;"></div>
+                <span class="bar-value">4,000,000</span>
+                <div class="bar kvllay" style="height: 66.7%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">136,799</span>
-                <div class="bar redis" style="height: 85.5%;"></div>
+                <span class="bar-value">2,057,613</span>
+                <div class="bar redis" style="height: 34.3%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-group">
+            <div class="bars-pair">
+              <div class="bar-wrapper">
+                <span class="bar-value">5,494,505</span>
+                <div class="bar kvllay" style="height: 91.6%;"></div>
+              </div>
+              <div class="bar-wrapper">
+                <span class="bar-value">2,531,645</span>
+                <div class="bar redis" style="height: 42.2%;"></div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="x-axis-labels">
-          <div class="category-label">SET (8 threads)</div>
-          <div class="category-label">GET (50 clients)</div>
-          <div class="category-label">INCR (50 clients)</div>
+          <div class="category-label">SET (Pipelined 32)</div>
+          <div class="category-label">GET (Pipelined 32)</div>
+          <div class="category-label">GET (High-Batch 64)</div>
         </div>
       </div>
     </div>
@@ -425,7 +425,7 @@
   <!-- Chart 3: Latency -->
   <div class="chart-card" id="chart-latency">
     <div class="chart-header">
-      <h2 class="chart-title">Response Latency: p50 (μs, lower is better)</h2>
+      <h2 class="chart-title">Response Latency: Lower is Better (μs)</h2>
       <div class="chart-legend">
         <div class="legend-item">
           <div class="legend-color legend-kvllay"></div>
@@ -443,11 +443,10 @@
         <div class="y-axis-title">Latency (μs)</div>
         <div class="y-axis-ticks">
           <span>0</span>
-          <span>50</span>
-          <span>100</span>
           <span>150</span>
-          <span>200</span>
-          <span>250</span>
+          <span>300</span>
+          <span>450</span>
+          <span>600</span>
         </div>
       </div>
 
@@ -458,19 +457,18 @@
           <div class="grid-line"></div>
           <div class="grid-line"></div>
           <div class="grid-line"></div>
-          <div class="grid-line"></div>
         </div>
 
         <div class="bars-layer">
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">47 μs</span>
-                <div class="bar kvllay" style="height: 18.8%;"></div>
+                <span class="bar-value">10 μs</span>
+                <div class="bar kvllay" style="height: 3.5%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">52 μs</span>
-                <div class="bar redis" style="height: 20.8%;"></div>
+                <span class="bar-value">13 μs</span>
+                <div class="bar redis" style="height: 4.5%;"></div>
               </div>
             </div>
           </div>
@@ -478,20 +476,34 @@
           <div class="bar-group">
             <div class="bars-pair">
               <div class="bar-wrapper">
-                <span class="bar-value">175 μs</span>
-                <div class="bar kvllay" style="height: 70.0%;"></div>
+                <span class="bar-value">43 μs</span>
+                <div class="bar kvllay" style="height: 7.2%;"></div>
               </div>
               <div class="bar-wrapper">
-                <span class="bar-value">183 μs</span>
-                <div class="bar redis" style="height: 73.2%;"></div>
+                <span class="bar-value">52 μs</span>
+                <div class="bar redis" style="height: 8.7%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bar-group">
+            <div class="bars-pair">
+              <div class="bar-wrapper">
+                <span class="bar-value">191 μs</span>
+                <div class="bar kvllay" style="height: 31.8%;"></div>
+              </div>
+              <div class="bar-wrapper">
+                <span class="bar-value">519 μs</span>
+                <div class="bar redis" style="height: 86.5%;"></div>
               </div>
             </div>
           </div>
         </div>
 
         <div class="x-axis-labels">
-          <div class="category-label">p50 (8 Threads Concurrent)</div>
-          <div class="category-label">p50 (50 Clients Benchmark)</div>
+          <div class="category-label">Single-Client (avg)</div>
+          <div class="category-label">Multi-Thread (p50)</div>
+          <div class="category-label">Pipelined Batch (p50)</div>
         </div>
       </div>
     </div>

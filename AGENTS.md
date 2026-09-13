@@ -42,7 +42,7 @@
 
 ### 1. Storage Engine (`include/kvllay/store.hpp`)
 - **Class**: `kvllay::Store`
-- **Underlying Storage**: 32-way sharded storage (`std::array<Shard, 32> shards_`) with `hash(key) & 31` dispatch.
+- **Underlying Storage**: 32-way sharded storage (`std::array<Shard, 32> shards_`) with 64-bit FNV-1a `hash(key) & 31` dispatch over `std::string_view`.
 - **Synchronization & Lock Striping**:
   - Each `Shard` is 64-byte aligned (`alignas(64)`) to eliminate CPU cache-line False Sharing.
   - Each shard has its own independent `mutable std::shared_mutex mutex`.
@@ -58,25 +58,27 @@
 ### 2. Protocol Engine (`include/kvllay/resp.hpp`)
 - **Class**: `kvllay::Resp`
 - **Parser Return Type**: `kvllay::ParseStatus` (`Success`, `Incomplete`, `Error`)
+- **Zero-Copy Parser**: Parses commands directly into `std::vector<std::string_view>& args` without heap allocations for arguments, maintaining an unescape scratch buffer only when backslash escapes are encountered.
 - **Protocol Formats Handled**:
   - **RESP2 Array**: Format `*<count>\r\n$<len>\r\n<data>\r\n...`. Handles negative lengths (null values) and tracks bytes consumed via `consumed_bytes`.
   - **Inline Text**: Space-delimited string terminated by `\r\n` or `\n`. Supports single and double-quoted arguments with backslash escaping (`\"`, `\'`).
-- **Serialization Helpers**:
-  - `simple_string(str)`: `+<str>\r\n`
-  - `error(err)`: `-ERR <err>\r\n` (or preserves `-ERR ` / `-WRONGTYPE ` prefix if present)
-  - `integer(val)`: `:<val>\r\n`
-  - `bulk_string(val)`: `$<len>\r\n<val>\r\n`
-  - `null_bulk_string()`: `$-1\r\n`
-  - `empty_array()`: `*0\r\n`
-  - `array(vector<string>)`: `*<count>\r\n` followed by serialized bulk strings.
+- **Zero-Allocation Stream Serialization Helpers**:
+  - `append_ok(out)`: appends `+OK\r\n`
+  - `append_pong(out)`: appends `+PONG\r\n`
+  - `append_error(out, err)`: appends `-ERR <err>\r\n`
+  - `append_integer(out, val)`: appends `:<val>\r\n` using `std::to_chars`
+  - `append_bulk_string(out, val)`: appends `$<len>\r\n<val>\r\n` using `std::to_chars`
+  - `append_null_bulk_string(out)`: appends `$-1\r\n`
+  - `append_empty_array(out)`: appends `*0\r\n`
+  - `append_array_header(out, count)`: appends `*<count>\r\n`
 
 ### 3. Command Dispatcher (`include/kvllay/commands.hpp`)
 - **Classes / Structs**:
-  - `kvllay::CommandResult`: `{ std::string response; bool should_close; }`
-  - `kvllay::CommandHandler`: Dispatches tokenized command arguments to internal member functions.
+  - `kvllay::CommandResult`: `{ std::string response; bool should_close; }` (legacy/standalone helper).
+  - `kvllay::CommandHandler`: Dispatches tokenized command arguments to internal member functions via zero-alloc output buffering `dispatch(const std::vector<std::string_view>& args, bool& authenticated, std::string& out, bool& should_close)`.
 - **Command Routing**:
-  - Command name is normalized to uppercase using `std::transform(..., ::toupper)`.
-  - `QUIT` returns `+OK\r\n` with `should_close = true` without checking auth.
+  - Fast $O(1)$ jump-table dispatch based on `cmd.size()` and character tags, eliminating string allocations and cascading string comparisons.
+  - `QUIT` appends `+OK\r\n` with `should_close = true` without checking auth.
   - `AUTH` evaluates credentials before global auth enforcement.
   - If server password is configured and client is unauthenticated, all other commands return `-NOAUTH Authentication required.\r\n`.
   - Unknown commands return `-ERR unknown command '<name>'\r\n`.

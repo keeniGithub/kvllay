@@ -4,9 +4,11 @@
 #pragma once
 
 #include <string>
+#include <string_view>
 #include <vector>
 #include <algorithm>
 #include <chrono>
+#include <charconv>
 #include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
@@ -39,137 +41,234 @@ public:
         return true;
     }
 
-    CommandResult dispatch(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
+    void dispatch(const std::vector<std::string_view>& args, std::string& out, bool& authenticated, const std::string& server_password, bool& should_close) {
         if (args.empty()) {
-            return {Resp::error("empty command"), false};
+            Resp::append_error(out, "empty command");
+            return;
         }
 
         std::string_view cmd = args[0];
 
         if (iequals(cmd, "QUIT")) {
-            return {Resp::ok(), true};
+            Resp::append_ok(out);
+            should_close = true;
+            return;
         }
 
         if (iequals(cmd, "AUTH")) {
-            return handle_auth(args, authenticated, server_password);
+            handle_auth_sv(args, authenticated, server_password, out);
+            return;
         }
 
         if (!server_password.empty() && !authenticated) {
-            return {Resp::error("NOAUTH Authentication required."), false};
+            Resp::append_error(out, "NOAUTH Authentication required.");
+            return;
         }
 
-        CommandResult result;
+        size_t pre_out_len = out.size();
         bool is_mutating = false;
 
-        bool is_allocating = iequals(cmd, "SET") || iequals(cmd, "SETEX") || iequals(cmd, "MSET") ||
-                             iequals(cmd, "LPUSH") || iequals(cmd, "RPUSH") ||
-                             iequals(cmd, "INCR") || iequals(cmd, "DECR") ||
-                             iequals(cmd, "INCRBY") || iequals(cmd, "DECRBY");
-        if (is_allocating) {
-            if (!store_.check_memory_and_evict()) {
-                return {Resp::error("OOM command not allowed when used memory > 'maxmemory'."), false};
+        switch (cmd.size()) {
+        case 3: {
+            char c0 = std::toupper(static_cast<unsigned char>(cmd[0]));
+            char c1 = std::toupper(static_cast<unsigned char>(cmd[1]));
+            char c2 = std::toupper(static_cast<unsigned char>(cmd[2]));
+            if (c0 == 'G' && c1 == 'E' && c2 == 'T') {
+                handle_get_sv(args, out);
+            } else if (c0 == 'S' && c1 == 'E' && c2 == 'T') {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_set_sv(args, out);
+                }
+            } else if (c0 == 'D' && c1 == 'E' && c2 == 'L') {
+                is_mutating = true;
+                handle_del_sv(args, out);
+            } else if (c0 == 'T' && c1 == 'T' && c2 == 'L') {
+                handle_ttl_sv(args, out);
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
             }
+            break;
         }
-
-        if (iequals(cmd, "GET")) {
-            result = handle_get(args);
-        } else if (iequals(cmd, "SET")) {
-            is_mutating = true;
-            result = handle_set(args);
-        } else if (iequals(cmd, "INCR")) {
-            is_mutating = true;
-            result = handle_incr(args);
-        } else if (iequals(cmd, "PING")) {
-            result = handle_ping(args);
-        } else if (iequals(cmd, "DEL")) {
-            is_mutating = true;
-            result = handle_del(args);
-        } else if (iequals(cmd, "EXISTS")) {
-            result = handle_exists(args);
-        } else if (iequals(cmd, "MGET")) {
-            result = handle_mget(args);
-        } else if (iequals(cmd, "MSET")) {
-            is_mutating = true;
-            result = handle_mset(args);
-        } else if (iequals(cmd, "DECR")) {
-            is_mutating = true;
-            result = handle_decr(args);
-        } else if (iequals(cmd, "INCRBY")) {
-            is_mutating = true;
-            result = handle_incrby(args);
-        } else if (iequals(cmd, "DECRBY")) {
-            is_mutating = true;
-            result = handle_decrby(args);
-        } else if (iequals(cmd, "TTL")) {
-            result = handle_ttl(args);
-        } else if (iequals(cmd, "PTTL")) {
-            result = handle_pttl(args);
-        } else if (iequals(cmd, "EXPIRE")) {
-            is_mutating = true;
-            result = handle_expire(args);
-        } else if (iequals(cmd, "PEXPIRE")) {
-            is_mutating = true;
-            result = handle_pexpire(args);
-        } else if (iequals(cmd, "PERSIST")) {
-            is_mutating = true;
-            result = handle_persist(args);
-        } else if (iequals(cmd, "SETEX")) {
-            is_mutating = true;
-            result = handle_setex(args);
-        } else if (iequals(cmd, "KEYS")) {
-            result = handle_keys(args);
-        } else if (iequals(cmd, "DBSIZE")) {
-            result = handle_dbsize(args);
-        } else if (iequals(cmd, "COMMAND")) {
-            result = handle_command(args);
-        } else if (iequals(cmd, "CONFIG")) {
-            result = handle_config(args);
-        } else if (iequals(cmd, "INFO")) {
-            result = handle_info(args);
-        } else if (iequals(cmd, "FLUSHDB") || iequals(cmd, "FLUSHALL")) {
-            is_mutating = true;
-            result = handle_flushdb(args);
-        } else if (iequals(cmd, "ECHO")) {
-            result = handle_echo(args);
-        } else if (iequals(cmd, "SAVE")) {
-            result = handle_save(args);
-        } else if (iequals(cmd, "BGSAVE")) {
-            result = handle_bgsave(args);
-        } else if (iequals(cmd, "LASTSAVE")) {
-            result = handle_lastsave(args);
-        } else if (iequals(cmd, "BGREWRITEAOF")) {
-            result = handle_bgrewriteaof(args);
-        } else if (iequals(cmd, "LPUSH")) {
-            is_mutating = true;
-            result = handle_lpush(args);
-        } else if (iequals(cmd, "RPUSH")) {
-            is_mutating = true;
-            result = handle_rpush(args);
-        } else if (iequals(cmd, "LPOP")) {
-            is_mutating = true;
-            result = handle_lpop(args);
-        } else if (iequals(cmd, "RPOP")) {
-            is_mutating = true;
-            result = handle_rpop(args);
-        } else if (iequals(cmd, "LLEN")) {
-            result = handle_llen(args);
-        } else if (iequals(cmd, "LRANGE")) {
-            result = handle_lrange(args);
-        } else if (iequals(cmd, "LINDEX")) {
-            result = handle_lindex(args);
-        } else if (iequals(cmd, "TYPE")) {
-            result = handle_type(args);
-        } else {
-            return {Resp::error("unknown command '" + std::string(cmd) + "'"), false};
+        case 4: {
+            char c0 = std::toupper(static_cast<unsigned char>(cmd[0]));
+            char c1 = std::toupper(static_cast<unsigned char>(cmd[1]));
+            char c2 = std::toupper(static_cast<unsigned char>(cmd[2]));
+            char c3 = std::toupper(static_cast<unsigned char>(cmd[3]));
+            if (c0 == 'P' && c1 == 'I' && c2 == 'N' && c3 == 'G') {
+                handle_ping_sv(args, out);
+            } else if (c0 == 'I' && c1 == 'N' && c2 == 'C' && c3 == 'R') {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_incr_sv(args, out);
+                }
+            } else if (c0 == 'M' && c1 == 'G' && c2 == 'E' && c3 == 'T') {
+                handle_mget_sv(args, out);
+            } else if (c0 == 'M' && c1 == 'S' && c2 == 'E' && c3 == 'T') {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_mset_sv(args, out);
+                }
+            } else if (c0 == 'D' && c1 == 'E' && c2 == 'C' && c3 == 'R') {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_decr_sv(args, out);
+                }
+            } else if (c0 == 'L' && c1 == 'P' && c2 == 'O' && c3 == 'P') {
+                is_mutating = true;
+                handle_lpop_sv(args, out);
+            } else if (c0 == 'R' && c1 == 'P' && c2 == 'O' && c3 == 'P') {
+                is_mutating = true;
+                handle_rpop_sv(args, out);
+            } else if (c0 == 'L' && c1 == 'L' && c2 == 'E' && c3 == 'N') {
+                handle_llen_sv(args, out);
+            } else if (c0 == 'T' && c1 == 'Y' && c2 == 'P' && c3 == 'E') {
+                handle_type_sv(args, out);
+            } else if (c0 == 'I' && c1 == 'N' && c2 == 'F' && c3 == 'O') {
+                handle_info_sv(args, out);
+            } else if (c0 == 'E' && c1 == 'C' && c2 == 'H' && c3 == 'O') {
+                handle_echo_sv(args, out);
+            } else if (c0 == 'P' && c1 == 'T' && c2 == 'T' && c3 == 'L') {
+                handle_pttl_sv(args, out);
+            } else if (c0 == 'S' && c1 == 'A' && c2 == 'V' && c3 == 'E') {
+                handle_save_sv(args, out);
+            } else if (c0 == 'K' && c1 == 'E' && c2 == 'Y' && c3 == 'S') {
+                handle_keys_sv(args, out);
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            }
+            break;
+        }
+        case 5: {
+            if (iequals(cmd, "LPUSH")) {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_lpush_sv(args, out);
+                }
+            } else if (iequals(cmd, "RPUSH")) {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_rpush_sv(args, out);
+                }
+            } else if (iequals(cmd, "SETEX")) {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_setex_sv(args, out);
+                }
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            }
+            break;
+        }
+        case 6: {
+            if (iequals(cmd, "EXISTS")) {
+                handle_exists_sv(args, out);
+            } else if (iequals(cmd, "INCRBY")) {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_incrby_sv(args, out);
+                }
+            } else if (iequals(cmd, "DECRBY")) {
+                if (!store_.check_memory_and_evict()) {
+                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+                } else {
+                    is_mutating = true;
+                    handle_decrby_sv(args, out);
+                }
+            } else if (iequals(cmd, "EXPIRE")) {
+                is_mutating = true;
+                handle_expire_sv(args, out);
+            } else if (iequals(cmd, "LRANGE")) {
+                handle_lrange_sv(args, out);
+            } else if (iequals(cmd, "LINDEX")) {
+                handle_lindex_sv(args, out);
+            } else if (iequals(cmd, "DBSIZE")) {
+                handle_dbsize_sv(args, out);
+            } else if (iequals(cmd, "CONFIG")) {
+                handle_config_sv(args, out);
+            } else if (iequals(cmd, "BGSAVE")) {
+                handle_bgsave_sv(args, out);
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            }
+            break;
+        }
+        case 7: {
+            if (iequals(cmd, "COMMAND")) {
+                handle_command_sv(args, out);
+            } else if (iequals(cmd, "PEXPIRE")) {
+                is_mutating = true;
+                handle_pexpire_sv(args, out);
+            } else if (iequals(cmd, "PERSIST")) {
+                is_mutating = true;
+                handle_persist_sv(args, out);
+            } else if (iequals(cmd, "FLUSHDB")) {
+                is_mutating = true;
+                handle_flushdb_sv(args, out);
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            }
+            break;
+        }
+        case 8: {
+            if (iequals(cmd, "LASTSAVE")) {
+                handle_lastsave_sv(args, out);
+            } else if (iequals(cmd, "FLUSHALL")) {
+                is_mutating = true;
+                handle_flushdb_sv(args, out);
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            }
+            break;
+        }
+        case 12: {
+            if (iequals(cmd, "BGREWRITEAOF")) {
+                handle_bgrewriteaof_sv(args, out);
+            } else {
+                Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            }
+            break;
+        }
+        default: {
+            Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
+            break;
+        }
         }
 
         if (is_mutating && aof_mgr_ && aof_mgr_->is_enabled()) {
-            if (result.response.rfind("-ERR", 0) != 0 && result.response.rfind("-WRONG", 0) != 0) {
+            std::string_view written(out.data() + pre_out_len, out.size() - pre_out_len);
+            if (written.rfind("-ERR", 0) != 0 && written.rfind("-WRONG", 0) != 0 && written.rfind("-OOM", 0) != 0) {
                 aof_mgr_->append(args);
             }
         }
+    }
 
-        return result;
+    CommandResult dispatch(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
+        std::vector<std::string_view> sv_args;
+        sv_args.reserve(args.size());
+        for (const auto& a : args) {
+            sv_args.emplace_back(a);
+        }
+        std::string out;
+        bool should_close = false;
+        dispatch(sv_args, out, authenticated, server_password, should_close);
+        return {std::move(out), should_close};
     }
 
 private:
@@ -178,160 +277,190 @@ private:
     AofManager* aof_mgr_;
     std::chrono::steady_clock::time_point start_time_;
 
-    CommandResult handle_auth(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
+    void handle_auth_sv(const std::vector<std::string_view>& args, bool& authenticated, const std::string& server_password, std::string& out) {
         if (args.size() < 2 || args.size() > 3) {
-            return {Resp::error("wrong number of arguments for 'auth' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'auth' command");
+            return;
         }
 
         if (server_password.empty()) {
             authenticated = true;
-            return {Resp::simple_string("OK"), false};
+            Resp::append_ok(out);
+            return;
         }
 
-        std::string provided_password = (args.size() == 2) ? args[1] : args[2];
+        std::string_view provided_password = (args.size() == 2) ? args[1] : args[2];
         if (provided_password == server_password) {
             authenticated = true;
-            return {Resp::simple_string("OK"), false};
+            Resp::append_ok(out);
+            return;
         }
 
-        return {Resp::error("WRONGPASS invalid username-password pair or user is disabled."), false};
+        Resp::append_error(out, "WRONGPASS invalid username-password pair or user is disabled.");
     }
 
-    CommandResult handle_ping(const std::vector<std::string>& args) {
+    void handle_ping_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() == 1) {
-            return {Resp::simple_string("PONG"), false};
+            Resp::append_pong(out);
         } else if (args.size() == 2) {
-            return {Resp::bulk_string(args[1]), false};
+            Resp::append_bulk_string(out, args[1]);
+        } else {
+            Resp::append_error(out, "wrong number of arguments for 'ping' command");
         }
-        return {Resp::error("wrong number of arguments for 'ping' command"), false};
     }
 
-    CommandResult handle_set(const std::vector<std::string>& args) {
+    void handle_set_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 3) {
-            return {Resp::error("wrong number of arguments for 'set' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'set' command");
+            return;
         }
         store_.set(args[1], args[2]);
-        return {Resp::simple_string("OK"), false};
+        Resp::append_ok(out);
     }
 
-    CommandResult handle_get(const std::vector<std::string>& args) {
+    void handle_get_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'get' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'get' command");
+            return;
         }
-        auto res = store_.get(args[1]);
-        if (res.status == Store::GetStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
-        }
-        if (res.status == Store::GetStatus::NotFound) {
-            return {Resp::null_bulk_string(), false};
-        }
-        return {Resp::bulk_string(res.value), false};
+        store_.get_and_append(args[1], out);
     }
 
-    CommandResult handle_del(const std::vector<std::string>& args) {
+    void handle_del_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 2) {
-            return {Resp::error("wrong number of arguments for 'del' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'del' command");
+            return;
         }
-        std::vector<std::string> keys_to_del(args.begin() + 1, args.end());
-        size_t count = store_.del(keys_to_del);
-        return {Resp::integer(count), false};
+        if (args.size() == 2) {
+            Resp::append_integer(out, store_.del_one(args[1]));
+            return;
+        }
+        std::vector<std::string_view> keys(args.begin() + 1, args.end());
+        Resp::append_integer(out, store_.del(keys));
     }
 
-    CommandResult handle_exists(const std::vector<std::string>& args) {
+    void handle_exists_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 2) {
-            return {Resp::error("wrong number of arguments for 'exists' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'exists' command");
+            return;
         }
-        std::vector<std::string> keys_to_check(args.begin() + 1, args.end());
-        size_t count = store_.exists(keys_to_check);
-        return {Resp::integer(count), false};
+        if (args.size() == 2) {
+            Resp::append_integer(out, store_.exists_one(args[1]));
+            return;
+        }
+        std::vector<std::string_view> keys(args.begin() + 1, args.end());
+        Resp::append_integer(out, store_.exists(keys));
     }
 
-    CommandResult handle_keys(const std::vector<std::string>& args) {
+    void handle_keys_sv(const std::vector<std::string_view>& args, std::string& out) {
         std::string pattern = "*";
         if (args.size() >= 2) {
-            pattern = args[1];
+            pattern = std::string(args[1]);
         }
         auto matched = store_.keys(pattern);
-        return {Resp::array(matched), false};
-    }
-
-    CommandResult handle_flushdb(const std::vector<std::string>&) {
-        store_.flushdb();
-        return {Resp::simple_string("OK"), false};
-    }
-
-    CommandResult handle_dbsize(const std::vector<std::string>&) {
-        return {Resp::integer(store_.size()), false};
-    }
-
-    CommandResult handle_echo(const std::vector<std::string>& args) {
-        if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'echo' command"), false};
+        Resp::append_array_header(out, matched.size());
+        for (const auto& k : matched) {
+            Resp::append_bulk_string(out, k);
         }
-        return {Resp::bulk_string(args[1]), false};
     }
 
-    CommandResult handle_command(const std::vector<std::string>&) {
-        return {Resp::empty_array(), false};
+    void handle_flushdb_sv(const std::vector<std::string_view>&, std::string& out) {
+        store_.flushdb();
+        Resp::append_ok(out);
     }
 
-    CommandResult handle_config(const std::vector<std::string>& args) {
+    void handle_dbsize_sv(const std::vector<std::string_view>&, std::string& out) {
+        Resp::append_integer(out, store_.size());
+    }
+
+    void handle_echo_sv(const std::vector<std::string_view>& args, std::string& out) {
+        if (args.size() != 2) {
+            Resp::append_error(out, "wrong number of arguments for 'echo' command");
+            return;
+        }
+        Resp::append_bulk_string(out, args[1]);
+    }
+
+    void handle_command_sv(const std::vector<std::string_view>&, std::string& out) {
+        Resp::append_empty_array(out);
+    }
+
+    void handle_config_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 2) {
-            return {Resp::error("wrong number of arguments for 'config' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'config' command");
+            return;
         }
         if (iequals(args[1], "GET")) {
             if (args.size() != 3) {
-                return {Resp::error("wrong number of arguments for 'config|get' command"), false};
+                Resp::append_error(out, "wrong number of arguments for 'config|get' command");
+                return;
             }
-            std::string param = args[2];
+            std::string param(args[2]);
             std::transform(param.begin(), param.end(), param.begin(), ::tolower);
             if (param == "maxmemory") {
-                return {Resp::array(std::vector<std::string>{"maxmemory", std::to_string(store_.maxmemory())}), false};
+                Resp::append_array_header(out, 2);
+                Resp::append_bulk_string(out, "maxmemory");
+                Resp::append_bulk_string(out, std::to_string(store_.maxmemory()));
             } else if (param == "maxmemory-policy") {
-                return {Resp::array(std::vector<std::string>{"maxmemory-policy", constants::maxmemory_policy_to_string(store_.maxmemory_policy())}), false};
+                Resp::append_array_header(out, 2);
+                Resp::append_bulk_string(out, "maxmemory-policy");
+                Resp::append_bulk_string(out, constants::maxmemory_policy_to_string(store_.maxmemory_policy()));
             } else if (param == "*") {
-                return {Resp::array(std::vector<std::string>{
-                    "maxmemory", std::to_string(store_.maxmemory()),
-                    "maxmemory-policy", constants::maxmemory_policy_to_string(store_.maxmemory_policy())
-                }), false};
+                Resp::append_array_header(out, 4);
+                Resp::append_bulk_string(out, "maxmemory");
+                Resp::append_bulk_string(out, std::to_string(store_.maxmemory()));
+                Resp::append_bulk_string(out, "maxmemory-policy");
+                Resp::append_bulk_string(out, constants::maxmemory_policy_to_string(store_.maxmemory_policy()));
+            } else if (param == "save") {
+                Resp::append_array_header(out, 2);
+                Resp::append_bulk_string(out, "save");
+                Resp::append_bulk_string(out, "");
+            } else if (param == "appendonly") {
+                Resp::append_array_header(out, 2);
+                Resp::append_bulk_string(out, "appendonly");
+                Resp::append_bulk_string(out, (aof_mgr_ && aof_mgr_->is_enabled()) ? "yes" : "no");
             } else {
-                return {Resp::empty_array(), false};
+                Resp::append_empty_array(out);
             }
         } else if (iequals(args[1], "SET")) {
             if (args.size() != 4) {
-                return {Resp::error("wrong number of arguments for 'config|set' command"), false};
+                Resp::append_error(out, "wrong number of arguments for 'config|set' command");
+                return;
             }
-            std::string param = args[2];
+            std::string param(args[2]);
             std::transform(param.begin(), param.end(), param.begin(), ::tolower);
             if (param == "maxmemory") {
                 size_t bytes = 0;
-                if (!constants::parse_memory_string(args[3], bytes)) {
-                    return {Resp::error("argument must be an integer or memory string (e.g. 100mb)"), false};
+                if (!constants::parse_memory_string(std::string(args[3]), bytes)) {
+                    Resp::append_error(out, "argument must be an integer or memory string (e.g. 100mb)");
+                    return;
                 }
                 store_.set_maxmemory(bytes);
-                return {Resp::ok(), false};
+                Resp::append_ok(out);
             } else if (param == "maxmemory-policy") {
                 constants::MaxmemoryPolicy policy;
-                if (!constants::parse_maxmemory_policy(args[3], policy)) {
-                    return {Resp::error("invalid maxmemory policy"), false};
+                if (!constants::parse_maxmemory_policy(std::string(args[3]), policy)) {
+                    Resp::append_error(out, "invalid maxmemory policy");
+                    return;
                 }
                 store_.set_maxmemory_policy(policy);
-                return {Resp::ok(), false};
+                Resp::append_ok(out);
             } else {
-                return {Resp::error("Unsupported CONFIG parameter: " + args[2]), false};
+                Resp::append_error(out, "Unsupported CONFIG parameter: " + std::string(args[2]));
             }
         } else if (iequals(args[1], "RESETSTAT")) {
-            return {Resp::ok(), false};
+            Resp::append_ok(out);
+        } else {
+            Resp::append_error(out, "unknown subcommand '" + std::string(args[1]) + "' for 'CONFIG'");
         }
-        return {Resp::error("unknown subcommand '" + args[1] + "' for 'CONFIG'"), false};
     }
 
-    CommandResult handle_info(const std::vector<std::string>& args) {
+    void handle_info_sv(const std::vector<std::string_view>& args, std::string& out) {
         auto now = std::chrono::steady_clock::now();
         auto uptime = std::chrono::duration_cast<std::chrono::seconds>(now - start_time_).count();
 
         bool all = (args.size() <= 1);
-        std::string section = all ? "" : args[1];
+        std::string section = all ? "" : std::string(args[1]);
         std::transform(section.begin(), section.end(), section.begin(), ::tolower);
 
         std::string info;
@@ -365,387 +494,437 @@ private:
             info += "db0:keys=" + std::to_string(store_.size()) + ",expires=" + std::to_string(store_.expires_size()) + "\r\n";
         }
 
-        return {Resp::bulk_string(info), false};
+        Resp::append_bulk_string(out, info);
     }
 
-    CommandResult handle_expire(const std::vector<std::string>& args) {
+    void handle_expire_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 3) {
-            return {Resp::error("wrong number of arguments for 'expire' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'expire' command");
+            return;
         }
         long long seconds = 0;
-        try {
-            seconds = std::stoll(args[2]);
-        } catch (...) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), seconds);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         if (seconds <= 0) {
-            int res = store_.expire(args[1], 0);
-            return {Resp::integer(res), false};
+            Resp::append_integer(out, store_.expire(std::string(args[1]), 0));
+            return;
         }
-        int res = store_.expire(args[1], static_cast<uint64_t>(seconds) * 1000);
-        return {Resp::integer(res), false};
+        Resp::append_integer(out, store_.expire(std::string(args[1]), static_cast<uint64_t>(seconds) * 1000));
     }
 
-    CommandResult handle_pexpire(const std::vector<std::string>& args) {
+    void handle_pexpire_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 3) {
-            return {Resp::error("wrong number of arguments for 'pexpire' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'pexpire' command");
+            return;
         }
         long long ms = 0;
-        try {
-            ms = std::stoll(args[2]);
-        } catch (...) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), ms);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         if (ms <= 0) {
-            int res = store_.expire(args[1], 0);
-            return {Resp::integer(res), false};
+            Resp::append_integer(out, store_.expire(std::string(args[1]), 0));
+            return;
         }
-        int res = store_.expire(args[1], static_cast<uint64_t>(ms));
-        return {Resp::integer(res), false};
+        Resp::append_integer(out, store_.expire(std::string(args[1]), static_cast<uint64_t>(ms)));
     }
 
-    CommandResult handle_ttl(const std::vector<std::string>& args) {
+    void handle_ttl_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'ttl' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'ttl' command");
+            return;
         }
-        long long rem = store_.ttl(args[1], false);
-        return {Resp::integer(rem), false};
+        Resp::append_integer(out, store_.ttl(std::string(args[1]), false));
     }
 
-    CommandResult handle_pttl(const std::vector<std::string>& args) {
+    void handle_pttl_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'pttl' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'pttl' command");
+            return;
         }
-        long long rem = store_.ttl(args[1], true);
-        return {Resp::integer(rem), false};
+        Resp::append_integer(out, store_.ttl(std::string(args[1]), true));
     }
 
-    CommandResult handle_persist(const std::vector<std::string>& args) {
+    void handle_persist_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'persist' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'persist' command");
+            return;
         }
-        int res = store_.persist(args[1]);
-        return {Resp::integer(res), false};
+        Resp::append_integer(out, store_.persist(std::string(args[1])));
     }
 
-    CommandResult handle_setex(const std::vector<std::string>& args) {
+    void handle_setex_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 4) {
-            return {Resp::error("wrong number of arguments for 'setex' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'setex' command");
+            return;
         }
         long long seconds = 0;
-        try {
-            seconds = std::stoll(args[2]);
-        } catch (...) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), seconds);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         if (seconds <= 0) {
-            return {Resp::error("invalid expire time in 'setex' command"), false};
+            Resp::append_error(out, "invalid expire time in 'setex' command");
+            return;
         }
-        store_.setex(args[1], static_cast<uint64_t>(seconds) * 1000, args[3]);
-        return {Resp::simple_string("OK"), false};
+        store_.setex(std::string(args[1]), static_cast<uint64_t>(seconds) * 1000, std::string(args[3]));
+        Resp::append_ok(out);
     }
 
-    CommandResult format_incr_result(Store::IncrStatus status, int64_t result) {
+    void format_incr_result_sv(Store::IncrStatus status, int64_t result, std::string& out) {
         if (status == Store::IncrStatus::Success) {
-            return {Resp::integer(result), false};
+            Resp::append_integer(out, result);
         } else if (status == Store::IncrStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
         } else if (status == Store::IncrStatus::NotAnInteger) {
-            return {Resp::error("value is not an integer or out of range"), false};
+            Resp::append_error(out, "value is not an integer or out of range");
         } else {
-            return {Resp::error("increment or decrement would overflow"), false};
+            Resp::append_error(out, "increment or decrement would overflow");
         }
     }
 
-    CommandResult handle_incr(const std::vector<std::string>& args) {
+    void handle_incr_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'incr' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'incr' command");
+            return;
         }
         int64_t result = 0;
         auto status = store_.incrby(args[1], 1, result);
-        return format_incr_result(status, result);
+        format_incr_result_sv(status, result, out);
     }
 
-    CommandResult handle_decr(const std::vector<std::string>& args) {
+    void handle_decr_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'decr' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'decr' command");
+            return;
         }
         int64_t result = 0;
         auto status = store_.decrby(args[1], 1, result);
-        return format_incr_result(status, result);
+        format_incr_result_sv(status, result, out);
     }
 
-    CommandResult handle_incrby(const std::vector<std::string>& args) {
+    void handle_incrby_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 3) {
-            return {Resp::error("wrong number of arguments for 'incrby' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'incrby' command");
+            return;
         }
         int64_t delta = 0;
-        if (!Store::parse_int64(args[2], delta)) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), delta);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         int64_t result = 0;
         auto status = store_.incrby(args[1], delta, result);
-        return format_incr_result(status, result);
+        format_incr_result_sv(status, result, out);
     }
 
-    CommandResult handle_decrby(const std::vector<std::string>& args) {
+    void handle_decrby_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 3) {
-            return {Resp::error("wrong number of arguments for 'decrby' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'decrby' command");
+            return;
         }
         int64_t delta = 0;
-        if (!Store::parse_int64(args[2], delta)) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), delta);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         int64_t result = 0;
         auto status = store_.decrby(args[1], delta, result);
-        return format_incr_result(status, result);
+        format_incr_result_sv(status, result, out);
     }
 
-    CommandResult handle_mget(const std::vector<std::string>& args) {
+    void handle_mget_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 2) {
-            return {Resp::error("wrong number of arguments for 'mget' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'mget' command");
+            return;
         }
-        std::vector<std::string> keys(args.begin() + 1, args.end());
-        auto values = store_.mget(keys);
-        return {Resp::array_of_bulk(values), false};
+        std::vector<std::string_view> keys(args.begin() + 1, args.end());
+        store_.mget_and_append(keys, out);
     }
 
-    CommandResult handle_mset(const std::vector<std::string>& args) {
+    void handle_mset_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 3 || (args.size() - 1) % 2 != 0) {
-            return {Resp::error("wrong number of arguments for 'mset' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'mset' command");
+            return;
         }
         std::vector<std::pair<std::string, std::string>> kvs;
         kvs.reserve((args.size() - 1) / 2);
         for (size_t i = 1; i < args.size(); i += 2) {
-            kvs.emplace_back(args[i], args[i + 1]);
+            kvs.emplace_back(std::string(args[i]), std::string(args[i + 1]));
         }
         store_.mset(kvs);
-        return {Resp::simple_string("OK"), false};
+        Resp::append_ok(out);
     }
 
-    CommandResult handle_save(const std::vector<std::string>& args) {
+    void handle_save_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 1) {
-            return {Resp::error("wrong number of arguments for 'save' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'save' command");
+            return;
         }
         if (!snapshot_mgr_) {
-            return {Resp::error("ERR snapshot manager not configured"), false};
+            Resp::append_error(out, "ERR snapshot manager not configured");
+            return;
         }
         if (!snapshot_mgr_->save_sync(store_)) {
-            return {Resp::error("ERR failed to save snapshot"), false};
+            Resp::append_error(out, "ERR failed to save snapshot");
+            return;
         }
-        return {Resp::simple_string("OK"), false};
+        Resp::append_ok(out);
     }
 
-    CommandResult handle_bgsave(const std::vector<std::string>& args) {
+    void handle_bgsave_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() > 2) {
-            return {Resp::error("wrong number of arguments for 'bgsave' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'bgsave' command");
+            return;
         }
         if (!snapshot_mgr_) {
-            return {Resp::error("ERR snapshot manager not configured"), false};
+            Resp::append_error(out, "ERR snapshot manager not configured");
+            return;
         }
         if (snapshot_mgr_->is_saving()) {
-            return {Resp::error("Background save already in progress"), false};
+            Resp::append_error(out, "Background save already in progress");
+            return;
         }
         if (!snapshot_mgr_->save_async(store_)) {
-            return {Resp::error("ERR failed to start background save"), false};
+            Resp::append_error(out, "ERR failed to start background save");
+            return;
         }
-        return {Resp::simple_string("Background saving started"), false};
+        Resp::append_simple_string(out, "Background saving started");
     }
 
-    CommandResult handle_lastsave(const std::vector<std::string>& args) {
+    void handle_lastsave_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 1) {
-            return {Resp::error("wrong number of arguments for 'lastsave' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'lastsave' command");
+            return;
         }
         uint64_t t = snapshot_mgr_ ? snapshot_mgr_->last_save_time() : 0;
-        return {Resp::integer(static_cast<long long>(t)), false};
+        Resp::append_integer(out, static_cast<long long>(t));
     }
 
-    CommandResult handle_bgrewriteaof(const std::vector<std::string>& args) {
+    void handle_bgrewriteaof_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 1) {
-            return {Resp::error("wrong number of arguments for 'bgrewriteaof' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'bgrewriteaof' command");
+            return;
         }
         if (!aof_mgr_ || !aof_mgr_->is_enabled()) {
-            return {Resp::error("Background append only file rewriting not enabled"), false};
+            Resp::append_error(out, "Background append only file rewriting not enabled");
+            return;
         }
         if (aof_mgr_->is_rewriting()) {
-            return {Resp::error("Background append only file rewriting already in progress"), false};
+            Resp::append_error(out, "Background append only file rewriting already in progress");
+            return;
         }
         if (!aof_mgr_->rewrite_async(store_)) {
-            return {Resp::error("ERR failed to start background AOF rewrite"), false};
+            Resp::append_error(out, "ERR failed to start background AOF rewrite");
+            return;
         }
-        return {Resp::simple_string("Background append only file rewriting started"), false};
+        Resp::append_simple_string(out, "Background append only file rewriting started");
     }
 
-    CommandResult handle_lpush(const std::vector<std::string>& args) {
+    void handle_lpush_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 3) {
-            return {Resp::error("wrong number of arguments for 'lpush' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'lpush' command");
+            return;
         }
-        std::vector<std::string> values(args.begin() + 2, args.end());
         size_t new_len = 0;
-        auto status = store_.lpush(args[1], values, new_len);
+        auto status = store_.lpush(args[1], args.begin() + 2, args.end(), new_len);
         if (status == Store::ListPushStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
-        return {Resp::integer(static_cast<long long>(new_len)), false};
+        Resp::append_integer(out, static_cast<long long>(new_len));
     }
 
-    CommandResult handle_rpush(const std::vector<std::string>& args) {
+    void handle_rpush_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 3) {
-            return {Resp::error("wrong number of arguments for 'rpush' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'rpush' command");
+            return;
         }
-        std::vector<std::string> values(args.begin() + 2, args.end());
         size_t new_len = 0;
-        auto status = store_.rpush(args[1], values, new_len);
+        auto status = store_.rpush(args[1], args.begin() + 2, args.end(), new_len);
         if (status == Store::ListPushStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
-        return {Resp::integer(static_cast<long long>(new_len)), false};
+        Resp::append_integer(out, static_cast<long long>(new_len));
     }
 
-    CommandResult handle_lpop(const std::vector<std::string>& args) {
+    void handle_lpop_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 2 || args.size() > 3) {
-            return {Resp::error("wrong number of arguments for 'lpop' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'lpop' command");
+            return;
         }
         if (args.size() == 2) {
-            std::vector<std::string> popped;
-            auto status = store_.lpop(args[1], 1, popped);
-            if (status == Store::ListPopStatus::WrongType) {
-                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
-            }
-            if (status == Store::ListPopStatus::NotFound || popped.empty()) {
-                return {Resp::null_bulk_string(), false};
-            }
-            return {Resp::bulk_string(popped[0]), false};
+            store_.lpop_one(args[1], out);
+            return;
         }
 
         int64_t count = 0;
-        if (!Store::parse_int64(args[2], count) || count < 0) {
-            return {Resp::error("value is out of range, must be positive"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), count);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size() || count < 0) {
+            Resp::append_error(out, "value is out of range, must be positive");
+            return;
         }
         if (count == 0) {
             size_t len = 0;
-            auto lstatus = store_.llen(args[1], len);
+            auto lstatus = store_.llen(std::string(args[1]), len);
             if (lstatus == Store::ListLenStatus::WrongType) {
-                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+                Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+                return;
             }
-            if (len == 0 && store_.exists({args[1]}) == 0) {
-                return {Resp::null_array(), false};
+            if (len == 0 && store_.exists_one(args[1]) == 0) {
+                Resp::append_null_array(out);
+                return;
             }
-            return {Resp::empty_array(), false};
+            Resp::append_empty_array(out);
+            return;
         }
 
         std::vector<std::string> popped;
-        auto status = store_.lpop(args[1], static_cast<size_t>(count), popped);
+        auto status = store_.lpop(std::string(args[1]), static_cast<size_t>(count), popped);
         if (status == Store::ListPopStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
         if (status == Store::ListPopStatus::NotFound) {
-            return {Resp::null_array(), false};
+            Resp::append_null_array(out);
+            return;
         }
-        return {Resp::array(popped), false};
+        Resp::append_array_header(out, popped.size());
+        for (const auto& p : popped) {
+            Resp::append_bulk_string(out, p);
+        }
     }
 
-    CommandResult handle_rpop(const std::vector<std::string>& args) {
+    void handle_rpop_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 2 || args.size() > 3) {
-            return {Resp::error("wrong number of arguments for 'rpop' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'rpop' command");
+            return;
         }
         if (args.size() == 2) {
-            std::vector<std::string> popped;
-            auto status = store_.rpop(args[1], 1, popped);
-            if (status == Store::ListPopStatus::WrongType) {
-                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
-            }
-            if (status == Store::ListPopStatus::NotFound || popped.empty()) {
-                return {Resp::null_bulk_string(), false};
-            }
-            return {Resp::bulk_string(popped[0]), false};
+            store_.rpop_one(args[1], out);
+            return;
         }
 
         int64_t count = 0;
-        if (!Store::parse_int64(args[2], count) || count < 0) {
-            return {Resp::error("value is out of range, must be positive"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), count);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size() || count < 0) {
+            Resp::append_error(out, "value is out of range, must be positive");
+            return;
         }
         if (count == 0) {
             size_t len = 0;
-            auto lstatus = store_.llen(args[1], len);
+            auto lstatus = store_.llen(std::string(args[1]), len);
             if (lstatus == Store::ListLenStatus::WrongType) {
-                return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+                Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+                return;
             }
-            if (len == 0 && store_.exists({args[1]}) == 0) {
-                return {Resp::null_array(), false};
+            if (len == 0 && store_.exists_one(args[1]) == 0) {
+                Resp::append_null_array(out);
+                return;
             }
-            return {Resp::empty_array(), false};
+            Resp::append_empty_array(out);
+            return;
         }
 
         std::vector<std::string> popped;
-        auto status = store_.rpop(args[1], static_cast<size_t>(count), popped);
+        auto status = store_.rpop(std::string(args[1]), static_cast<size_t>(count), popped);
         if (status == Store::ListPopStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
         if (status == Store::ListPopStatus::NotFound) {
-            return {Resp::null_array(), false};
+            Resp::append_null_array(out);
+            return;
         }
-        return {Resp::array(popped), false};
+        Resp::append_array_header(out, popped.size());
+        for (const auto& p : popped) {
+            Resp::append_bulk_string(out, p);
+        }
     }
 
-    CommandResult handle_llen(const std::vector<std::string>& args) {
+    void handle_llen_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'llen' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'llen' command");
+            return;
         }
         size_t len = 0;
-        auto status = store_.llen(args[1], len);
+        auto status = store_.llen(std::string(args[1]), len);
         if (status == Store::ListLenStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
-        return {Resp::integer(static_cast<long long>(len)), false};
+        Resp::append_integer(out, static_cast<long long>(len));
     }
 
-    CommandResult handle_lrange(const std::vector<std::string>& args) {
+    void handle_lrange_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 4) {
-            return {Resp::error("wrong number of arguments for 'lrange' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'lrange' command");
+            return;
         }
         int64_t start = 0;
         int64_t stop = 0;
-        if (!Store::parse_int64(args[2], start) || !Store::parse_int64(args[3], stop)) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr1, ec1] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), start);
+        auto [ptr2, ec2] = std::from_chars(args[3].data(), args[3].data() + args[3].size(), stop);
+        if (ec1 != std::errc() || ptr1 != args[2].data() + args[2].size() ||
+            ec2 != std::errc() || ptr2 != args[3].data() + args[3].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         std::vector<std::string> elements;
-        auto status = store_.lrange(args[1], start, stop, elements);
+        auto status = store_.lrange(std::string(args[1]), start, stop, elements);
         if (status == Store::ListRangeStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
-        return {Resp::array(elements), false};
+        Resp::append_array_header(out, elements.size());
+        for (const auto& elem : elements) {
+            Resp::append_bulk_string(out, elem);
+        }
     }
 
-    CommandResult handle_lindex(const std::vector<std::string>& args) {
+    void handle_lindex_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 3) {
-            return {Resp::error("wrong number of arguments for 'lindex' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'lindex' command");
+            return;
         }
         int64_t index = 0;
-        if (!Store::parse_int64(args[2], index)) {
-            return {Resp::error("value is not an integer or out of range"), false};
+        auto [ptr, ec] = std::from_chars(args[2].data(), args[2].data() + args[2].size(), index);
+        if (ec != std::errc() || ptr != args[2].data() + args[2].size()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
         }
         std::string elem;
-        auto status = store_.lindex(args[1], index, elem);
+        auto status = store_.lindex(std::string(args[1]), index, elem);
         if (status == Store::ListRangeStatus::WrongType) {
-            return {Resp::error("WRONGTYPE Operation against a key holding the wrong kind of value"), false};
+            Resp::append_error(out, "WRONGTYPE Operation against a key holding the wrong kind of value");
+            return;
         }
         if (status == Store::ListRangeStatus::NotFound) {
-            return {Resp::null_bulk_string(), false};
+            Resp::append_null_bulk_string(out);
+            return;
         }
-        return {Resp::bulk_string(elem), false};
+        Resp::append_bulk_string(out, elem);
     }
 
-    CommandResult handle_type(const std::vector<std::string>& args) {
+    void handle_type_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() != 2) {
-            return {Resp::error("wrong number of arguments for 'type' command"), false};
+            Resp::append_error(out, "wrong number of arguments for 'type' command");
+            return;
         }
-        auto t = store_.key_type(args[1]);
+        auto t = store_.key_type(std::string(args[1]));
         switch (t) {
-            case Store::KeyType::String: return {Resp::simple_string("string"), false};
-            case Store::KeyType::List: return {Resp::simple_string("list"), false};
+            case Store::KeyType::String: Resp::append_simple_string(out, "string"); break;
+            case Store::KeyType::List: Resp::append_simple_string(out, "list"); break;
             case Store::KeyType::None:
-            default: return {Resp::simple_string("none"), false};
+            default: Resp::append_simple_string(out, "none"); break;
         }
     }
 };
