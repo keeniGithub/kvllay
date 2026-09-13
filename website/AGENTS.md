@@ -9,7 +9,7 @@ The `website/` directory contains the modern landing page and documentation port
 - **Framework**: React 19 (`react`, `react-dom`) with React Compiler (`babel-plugin-react-compiler`)
 - **Build Tool**: Vite 8 with `@vitejs/plugin-react`
 - **Styling**: Tailwind CSS v4 (`@tailwindcss/vite`, `tailwindcss`)
-- **Icons**: Lucide React (`lucide-react`)
+- **Icons**: Tabler Icons (`@tabler/icons-react`)
 - **Fonts**: Inter (UI / sans-serif) & Geist Mono (code / monospace) loaded via Google Fonts in `index.html`
 - **Language**: TypeScript with strict mode and ESLint React Hooks validation
 
@@ -34,6 +34,10 @@ website/
 │   │   ├── Documentation.tsx   # Guides overview, repo links, and animated mascot preview
 │   │   ├── CtaBanner.tsx       # Bottom conversion block with animated mascot and star button
 │   │   └── Footer.tsx          # Navigation links, licenses, Docker Hub, and copyright
+│   ├── config/
+│   │   ├── links.ts            # Centralized external links and repository URLs
+│   │   ├── paths.ts            # Centralized internal paths, section IDs, and public asset URLs
+│   │   └── route.ts            # Route configuration re-exporting paths
 │   ├── lib/
 │   │   └── useGithubStars.ts   # Hook for GitHub API star fetching, caching, and skeleton state
 │   ├── App.tsx                 # Root application component orchestrating all page sections

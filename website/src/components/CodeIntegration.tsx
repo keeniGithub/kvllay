@@ -1,5 +1,6 @@
 import { useState } from "react"
-import { Check, Copy } from "lucide-react"
+import { IconCheck, IconCopy } from "@tabler/icons-react"
+import { paths } from "@/config/paths"
 
 export function CodeIntegration() {
   const [activeTab, setActiveTab] = useState<"python" | "node" | "go">("python")
@@ -76,8 +77,8 @@ func main() {
   }
 
   return (
-    <section id="integrations" className="w-full flex flex-col items-center py-16 px-6 lg:px-10 max-w-[1240px] mx-auto scroll-mt-20">
-      <div className="flex flex-col items-center text-center gap-3 mb-12">
+    <section id={paths.sections.integrations} className="w-full flex flex-col items-center py-10 sm:py-16 px-4 sm:px-6 lg:px-10 max-w-[1240px] mx-auto scroll-mt-20">
+      <div className="flex flex-col items-center text-center gap-2.5 sm:gap-3 mb-8 sm:mb-12">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00D2FF]/10 border border-[#00D2FF]/30">
           <span className="text-[11px] font-mono font-bold text-[#00D2FF] tracking-wider uppercase">
             DEVELOPER INTEGRATION
@@ -91,28 +92,28 @@ func main() {
         </p>
       </div>
 
-      <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-8 md:gap-10 items-center">
-        <div className="md:col-span-5 flex flex-col gap-5">
+      <div className="w-full grid grid-cols-1 md:grid-cols-12 gap-6 md:gap-10 items-center">
+        <div className="md:col-span-5 flex flex-col gap-4 sm:gap-5">
           {sdks.map((item) => (
-            <div key={item.title} className="flex items-start gap-3.5">
-              <div className="w-8 h-8 rounded-lg bg-[#0E131F] border border-[#1B2436] flex items-center justify-center shrink-0 mt-0.5">
-                <Check className="size-4 text-[#00D2FF]" />
+            <div key={item.title} className="flex items-start gap-3 sm:gap-3.5">
+              <div className="w-7.5 sm:w-8 h-7.5 sm:h-8 rounded-lg bg-[#0E131F] border border-[#1B2436] flex items-center justify-center shrink-0 mt-0.5">
+                <IconCheck className="size-4 text-[#00D2FF]" />
               </div>
               <div>
-                <h4 className="text-[15px] font-semibold text-[#F0F6FC] mb-1">{item.title}</h4>
-                <p className="text-[13px] text-[#8B9BB4] leading-[1.5]">{item.desc}</p>
+                <h4 className="text-[14px] sm:text-[15px] font-semibold text-[#F0F6FC] mb-0.5 sm:mb-1">{item.title}</h4>
+                <p className="text-[12.5px] sm:text-[13px] text-[#8B9BB4] leading-[1.5]">{item.desc}</p>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="md:col-span-7 w-full bg-[#0B0E17] border border-[#1E3B5C] rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-          <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#0A0E17] border-b border-[#1B2436]">
-            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none py-0.5">
+        <div className="md:col-span-7 w-full bg-[#0B0E17] border border-[#1E3B5C] rounded-xl sm:rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
+          <div className="flex items-center justify-between px-3 sm:px-4 py-2 sm:py-2.5 bg-[#0A0E17] border-b border-[#1B2436]">
+            <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto scrollbar-none py-0.5">
               <button
                 type="button"
                 onClick={() => setActiveTab("python")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
                   activeTab === "python"
                     ? "bg-[#0E131F] text-[#00D2FF] border border-[#00D2FF]/60 shadow-sm"
                     : "text-[#8B9BB4] hover:text-[#F0F6FC]"
@@ -123,7 +124,7 @@ func main() {
               <button
                 type="button"
                 onClick={() => setActiveTab("node")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
                   activeTab === "node"
                     ? "bg-[#0E131F] text-[#00D2FF] border border-[#00D2FF]/60 shadow-sm"
                     : "text-[#8B9BB4] hover:text-[#F0F6FC]"
@@ -134,7 +135,7 @@ func main() {
               <button
                 type="button"
                 onClick={() => setActiveTab("go")}
-                className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
+                className={`px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-xs font-mono font-medium transition-all ${
                   activeTab === "go"
                     ? "bg-[#0E131F] text-[#00D2FF] border border-[#00D2FF]/60 shadow-sm"
                     : "text-[#8B9BB4] hover:text-[#F0F6FC]"
@@ -152,18 +153,18 @@ func main() {
             >
               {copied ? (
                 <>
-                  <Check className="size-4 text-[#00D2FF]" />
+                  <IconCheck className="size-4 text-[#00D2FF]" />
                   <span className="text-[11px] text-[#00D2FF] font-sans font-medium hidden sm:inline">Copied!</span>
                 </>
               ) : (
-                <Copy className="size-4" />
+                <IconCopy className="size-4" />
               )}
             </button>
           </div>
 
-          <div className="p-4 sm:p-5 overflow-x-auto font-mono text-xs sm:text-[13px] leading-[1.75]">
+          <div className="p-3.5 sm:p-5 overflow-x-auto font-mono text-xs sm:text-[13px] leading-[1.75]">
             {activeTab === "python" && (
-              <div className="flex flex-col gap-0.5 min-w-[480px]">
+              <div className="flex flex-col gap-0.5 min-w-[440px] sm:min-w-[480px]">
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">1</span><span><span className="text-[#C084FC]">import</span> <span className="text-[#38BDF8]">redis</span></span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">2</span><span></span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">3</span><span><span className="text-[#F0F6FC]">client</span> <span className="text-[#94A3B8]">=</span> <span className="text-[#38BDF8]">redis</span>.<span className="text-[#60A5FA]">Redis</span>(<span className="text-[#93C5FD]">host</span><span className="text-[#94A3B8]">=</span><span className="text-[#34D399]">'localhost'</span>, <span className="text-[#93C5FD]">port</span><span className="text-[#94A3B8]">=</span><span className="text-[#FBBF24]">6379</span>)</span></div>
@@ -177,7 +178,7 @@ func main() {
             )}
 
             {activeTab === "node" && (
-              <div className="flex flex-col gap-0.5 min-w-[480px]">
+              <div className="flex flex-col gap-0.5 min-w-[440px] sm:min-w-[480px]">
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">1</span><span><span className="text-[#C084FC]">import</span> <span className="text-[#38BDF8]">Redis</span> <span className="text-[#C084FC]">from</span> <span className="text-[#34D399]">'ioredis'</span>;</span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">2</span><span></span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">3</span><span><span className="text-[#C084FC]">const</span> <span className="text-[#F0F6FC]">redis</span> <span className="text-[#94A3B8]">=</span> <span className="text-[#C084FC]">new</span> <span className="text-[#38BDF8]">Redis</span>(&#123; <span className="text-[#93C5FD]">host</span>: <span className="text-[#34D399]">'127.0.0.1'</span>, <span className="text-[#93C5FD]">port</span>: <span className="text-[#FBBF24]">6379</span> &#125;);</span></div>
@@ -192,7 +193,7 @@ func main() {
             )}
 
             {activeTab === "go" && (
-              <div className="flex flex-col gap-0.5 min-w-[480px]">
+              <div className="flex flex-col gap-0.5 min-w-[440px] sm:min-w-[480px]">
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">1</span><span><span className="text-[#C084FC]">package</span> <span className="text-[#F0F6FC]">main</span></span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">2</span><span></span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">3</span><span><span className="text-[#C084FC]">import</span> (</span></div>
@@ -203,7 +204,7 @@ func main() {
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">8</span><span>)</span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">9</span><span></span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">10</span><span><span className="text-[#C084FC]">func</span> <span className="text-[#60A5FA]">main</span>() &#123;</span></div>
-                <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">11</span><span className="pl-4"><span className="text-[#F0F6FC]">ctx</span> <span className="text-[#94A3B8] macroscopic">:=</span> <span className="text-[#38BDF8]">context</span>.<span className="text-[#60A5FA]">Background</span>()</span></div>
+                <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">11</span><span className="pl-4"><span className="text-[#F0F6FC]">ctx</span> <span className="text-[#94A3B8]">:=</span> <span className="text-[#38BDF8]">context</span>.<span className="text-[#60A5FA]">Background</span>()</span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">12</span><span className="pl-4"><span className="text-[#F0F6FC]">rdb</span> <span className="text-[#94A3B8]">:=</span> <span className="text-[#38BDF8]">redis</span>.<span className="text-[#60A5FA]">NewClient</span>(&<span className="text-[#38BDF8]">redis</span>.<span className="text-[#A78BFA]">Options</span>&#123;</span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">13</span><span className="pl-8"><span className="text-[#93C5FD]">Addr</span>: <span className="text-[#34D399]">"localhost:6379"</span>,</span></div>
                 <div className="flex gap-3 text-xs"><span className="select-none text-[#546682] w-5 text-right shrink-0">14</span><span className="pl-4">&#125;)</span></div>

@@ -1,10 +1,11 @@
 import { useState } from "react"
-import { HardDrive, Gauge, ArrowRightLeft, ChevronLeft, ChevronRight } from "lucide-react"
+import { IconDatabase, IconGauge, IconArrowsExchange, IconChevronLeft, IconChevronRight } from "@tabler/icons-react"
 import benchmarkSingleClient from "@docs/images/benchmark_single_client.png"
 import benchmarkMultithreaded from "@docs/images/benchmark_multithreaded.png"
 import benchmarkRam from "@docs/images/benchmark_ram.png"
 import benchmarkDocker from "@docs/images/benchmark_docker.png"
 import benchmarkLatency from "@docs/images/benchmark_latency.png"
+import { paths } from "@/config/paths"
 
 export function Comparison() {
   const [activeSlide, setActiveSlide] = useState(0)
@@ -67,21 +68,21 @@ export function Comparison() {
 
   const highlights = [
     {
-      icon: HardDrive,
+      icon: IconDatabase,
       title: "Ultra-Lean Footprint",
       desc: "At just 1.6 MB in Docker scratch and 2.4 MB idle RAM, Kvllay fits where Redis won't: CI runners, local microservices, lightweight containers, and edge IoT devices.",
       badgeHighlight: "90x Smaller",
       badgeText: "than standard Redis image",
     },
     {
-      icon: Gauge,
+      icon: IconGauge,
       title: "Sub-Millisecond & Fast",
       desc: "Guaranteed p50 latency < 0.10 ms on single-client workloads and matches Redis RESP2 protocol throughput (92k ops/sec on single-client SET/GET) with zero memory bloat.",
       badgeHighlight: "< 0.10 ms p50",
       badgeText: "single-client latency",
     },
     {
-      icon: ArrowRightLeft,
+      icon: IconArrowsExchange,
       title: "Zero Code Migration",
       desc: "Pure RESP2 compatibility means existing python-redis, node-redis, predis, Jedis, and redis-cli connect out of the box — just swap the port or host.",
       badgeHighlight: "100% Drop-in",
@@ -135,8 +136,8 @@ export function Comparison() {
   ]
 
   return (
-    <section id="why" className="w-full flex flex-col items-center py-16 px-6 lg:px-10 max-w-[1240px] mx-auto scroll-mt-20">
-      <div className="flex flex-col items-center text-center gap-3 mb-12">
+    <section id={paths.sections.why} className="w-full flex flex-col items-center py-10 sm:py-16 px-4 sm:px-6 lg:px-10 max-w-[1240px] mx-auto scroll-mt-20">
+      <div className="flex flex-col items-center text-center gap-2.5 sm:gap-3 mb-8 sm:mb-12">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#00D2FF]/10 border border-[#00D2FF]/30">
           <span className="text-[11px] font-mono font-bold text-[#00D2FF] tracking-wider uppercase">
             HEAD-TO-HEAD BENCHMARK
@@ -150,22 +151,22 @@ export function Comparison() {
         </p>
       </div>
 
-      <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5 mb-14">
+      <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-5 mb-10 sm:mb-14">
         {highlights.map((item) => {
           const Icon = item.icon
           return (
             <div
               key={item.title}
-              className="bg-[#0E131F] border border-[#1B2436] hover:border-[#1E3B5C] rounded-xl p-6 flex flex-col justify-between gap-4 transition-colors shadow-sm"
+              className="bg-[#0E131F] border border-[#1B2436] hover:border-[#1E3B5C] rounded-xl p-4 sm:p-6 flex flex-col justify-between gap-3.5 sm:gap-4 transition-colors shadow-sm"
             >
               <div>
-                <div className="w-10 h-10 rounded-xl bg-[#00D2FF]/10 flex items-center justify-center mb-4">
-                  <Icon className="size-5 text-[#00D2FF]" />
+                <div className="w-9 sm:w-10 h-9 sm:h-10 rounded-xl bg-[#00D2FF]/10 flex items-center justify-center mb-3 sm:mb-4">
+                  <Icon className="size-4.5 sm:size-5 text-[#00D2FF]" />
                 </div>
-                <h3 className="text-lg font-bold text-[#F0F6FC] mb-2">{item.title}</h3>
-                <p className="text-[13.5px] text-[#8B9BB4] leading-[1.55]">{item.desc}</p>
+                <h3 className="text-base sm:text-lg font-bold text-[#F0F6FC] mb-1.5 sm:mb-2">{item.title}</h3>
+                <p className="text-[13px] sm:text-[13.5px] text-[#8B9BB4] leading-[1.55]">{item.desc}</p>
               </div>
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-[#0A0E17] border border-[#1B2436] text-xs font-mono">
+              <div className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-md bg-[#0A0E17] border border-[#1B2436] text-xs font-mono">
                 <span className="text-[#00D2FF] font-bold">{item.badgeHighlight}</span>
                 <span className="text-[#546682]">{item.badgeText}</span>
               </div>
@@ -174,17 +175,17 @@ export function Comparison() {
         })}
       </div>
 
-      <div id="benchmarks" className="w-full flex flex-col gap-6 mb-14 scroll-mt-24">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-2">
+      <div id={paths.sections.benchmarks} className="w-full flex flex-col gap-4 sm:gap-6 mb-10 sm:mb-14 scroll-mt-24">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 pb-1 sm:pb-2">
           <div>
-            <h3 className="text-xl sm:text-2xl font-bold text-[#F0F6FC]">Visual Performance Graphs</h3>
+            <h3 className="text-lg sm:text-2xl font-bold text-[#F0F6FC]">Visual Performance Graphs</h3>
             <p className="text-xs sm:text-[13px] text-[#8B9BB4] mt-0.5">
               Official benchmark results against Redis 7.x (redis-benchmark & stress tests)
             </p>
           </div>
 
-          <div className="flex items-center gap-5">
-            <div className="hidden sm:flex items-center gap-3 text-xs font-mono">
+          <div className="flex items-center gap-4 sm:gap-5 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-3 text-xs font-mono">
               <div className="flex items-center gap-1.5">
                 <span className="w-2.5 h-2.5 rounded-sm bg-[#00D2FF]" />
                 <span className="text-[#F0F6FC]">kvllay</span>
@@ -203,17 +204,17 @@ export function Comparison() {
                 type="button"
                 onClick={prevSlide}
                 aria-label="Previous Benchmark Chart"
-                className="p-2 rounded-lg bg-[#0E131F] border border-[#1B2436] hover:border-[#00D2FF]/50 text-[#8B9BB4] hover:text-[#00D2FF] transition-colors focus:outline-none"
+                className="p-1.5 sm:p-2 rounded-lg bg-[#0E131F] border border-[#1B2436] hover:border-[#00D2FF]/50 text-[#8B9BB4] hover:text-[#00D2FF] transition-colors focus:outline-none"
               >
-                <ChevronLeft className="size-4" />
+                <IconChevronLeft className="size-4" />
               </button>
               <button
                 type="button"
                 onClick={nextSlide}
                 aria-label="Next Benchmark Chart"
-                className="p-2 rounded-lg bg-[#0E131F] border border-[#1B2436] hover:border-[#00D2FF]/50 text-[#8B9BB4] hover:text-[#00D2FF] transition-colors focus:outline-none"
+                className="p-1.5 sm:p-2 rounded-lg bg-[#0E131F] border border-[#1B2436] hover:border-[#00D2FF]/50 text-[#8B9BB4] hover:text-[#00D2FF] transition-colors focus:outline-none"
               >
-                <ChevronRight className="size-4" />
+                <IconChevronRight className="size-4" />
               </button>
             </div>
           </div>
@@ -225,7 +226,7 @@ export function Comparison() {
               key={slide.id}
               type="button"
               onClick={() => setActiveSlide(idx)}
-              className={`px-3.5 py-1.5 rounded-lg text-xs font-mono font-medium transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium transition-all whitespace-nowrap ${
                 activeSlide === idx
                   ? "bg-[#0E131F] text-[#00D2FF] border border-[#00D2FF]/60 shadow-sm"
                   : "bg-[#0A0E17] text-[#8B9BB4] border border-[#1B2436] hover:text-[#F0F6FC]"
@@ -236,33 +237,33 @@ export function Comparison() {
           ))}
         </div>
 
-        <div className="w-full bg-[#0B0E17] border border-[#1E3B5C] rounded-2xl p-5 sm:p-7 flex flex-col gap-5 shadow-[0_20px_50px_rgba(0,0,0,0.45)]">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-[#1B2436]">
+        <div className="w-full flex flex-col gap-3 sm:gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 sm:gap-2">
             <div>
-              <h4 className="text-base sm:text-lg font-bold text-[#F0F6FC]">
+              <h4 className="text-sm sm:text-lg font-bold text-[#F0F6FC]">
                 {slides[activeSlide].title}
               </h4>
-              <p className="text-xs sm:text-[13px] text-[#8B9BB4]">
+              <p className="text-[11.5px] sm:text-[13px] text-[#8B9BB4]">
                 {slides[activeSlide].subtitle}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 rounded-full bg-[#00D2FF]/10 border border-[#00D2FF]/30 text-xs font-mono font-bold text-[#00D2FF]">
+              <span className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full bg-[#00D2FF]/10 border border-[#00D2FF]/30 text-[11px] sm:text-xs font-mono font-bold text-[#00D2FF]">
                 {slides[activeSlide].badge}
               </span>
             </div>
           </div>
 
-          <div className="w-full flex items-center justify-center bg-[#070A10] border border-[#1B2436] rounded-xl p-3 sm:p-5 min-h-[260px] sm:min-h-[340px] max-h-[460px] overflow-hidden">
+          <div className="w-full flex items-center justify-center overflow-hidden py-1 sm:py-2">
             <img
               src={slides[activeSlide].image}
               alt={slides[activeSlide].title}
-              className="max-h-[380px] w-auto max-w-full object-contain rounded-lg transition-all duration-300"
+              className="max-h-[380px] sm:max-h-[480px] w-auto max-w-full object-contain transition-all duration-300"
             />
           </div>
 
           <div className="flex items-center justify-between gap-4 pt-1">
-            <span className="text-xs font-mono text-[#546682] truncate">
+            <span className="text-[11px] sm:text-xs font-mono text-[#546682] truncate">
               {slides[activeSlide].stats}
             </span>
 
@@ -285,22 +286,22 @@ export function Comparison() {
 
       <div className="w-full bg-[#0E131F] border border-[#1B2436] rounded-xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[680px]">
+          <table className="w-full text-left border-collapse min-w-[640px]">
             <thead>
-              <tr className="bg-[#0A0E17] border-b border-[#1B2436] text-[12px] font-mono">
-                <th className="py-3.5 px-6 font-bold text-[#546682]">WORKLOAD / METRIC</th>
-                <th className="py-3.5 px-6 font-bold text-[#00D2FF]">KVLLAY V1.0.0</th>
-                <th className="py-3.5 px-6 font-bold text-[#8B9BB4]">REDIS 7.x</th>
-                <th className="py-3.5 px-6 font-bold text-[#546682]">COMPARISON RESULT</th>
+              <tr className="bg-[#0A0E17] border-b border-[#1B2436] text-[11px] sm:text-[12px] font-mono">
+                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#546682]">WORKLOAD / METRIC</th>
+                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#00D2FF]">KVLLAY V1.0.0</th>
+                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#8B9BB4]">REDIS 7.x</th>
+                <th className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#546682]">COMPARISON RESULT</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[#1B2436] text-[13px] font-mono">
+            <tbody className="divide-y divide-[#1B2436] text-xs sm:text-[13px] font-mono">
               {tableData.map((row, idx) => (
                 <tr key={idx} className="hover:bg-[#121826] transition-colors">
-                  <td className="py-3.5 px-6 font-sans font-medium text-[#F0F6FC]">{row.metric}</td>
-                  <td className="py-3.5 px-6 font-bold text-[#00D2FF]">{row.kvllay}</td>
-                  <td className="py-3.5 px-6 text-[#8B9BB4]">{row.redis}</td>
-                  <td className="py-3.5 px-6 text-[#10B981] font-semibold">{row.result}</td>
+                  <td className="py-3 px-4 sm:py-3.5 sm:px-6 font-sans font-medium text-[#F0F6FC]">{row.metric}</td>
+                  <td className="py-3 px-4 sm:py-3.5 sm:px-6 font-bold text-[#00D2FF]">{row.kvllay}</td>
+                  <td className="py-3 px-4 sm:py-3.5 sm:px-6 text-[#8B9BB4]">{row.redis}</td>
+                  <td className="py-3 px-4 sm:py-3.5 sm:px-6 text-[#10B981] font-semibold">{row.result}</td>
                 </tr>
               ))}
             </tbody>
