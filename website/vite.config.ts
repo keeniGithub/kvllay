@@ -4,16 +4,22 @@ import react, { reactCompilerPreset } from '@vitejs/plugin-react'
 import babel from '@rolldown/plugin-babel'
 import { defineConfig } from 'vite'
 
-// https://vite.dev/config/
 export default defineConfig({
   plugins: [
     tailwindcss(),
     react(),
     babel({ presets: [reactCompilerPreset()] })
   ],
+  server: {
+    fs: {
+      allow: ['..'],
+    },
+  },
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
+      '@root': path.resolve(import.meta.dirname, '..'),
+      '@docs': path.resolve(import.meta.dirname, '../docs'),
     },
   },
 })
