@@ -23,6 +23,8 @@
 ├── src/
 │   ├── main.cpp            # Entry point, CLI argument parsing, server bootstrap
 │   └── resources.rc        # Windows PE resource script with application icon
+├── scripts/
+│   └── release.sh          # Git tag and release automation script
 ├── logo.ico                # Multi-resolution icon for Windows executable
 ├── logo.png                # High-resolution (256x256) logo
 ├── logo-16x16.png         # Pixel-art (16x16) source logo
@@ -190,6 +192,7 @@
 - `make compile MALLOC=mimalloc` or `make compile-mimalloc`: Compiles with high-performance `mimalloc`.
 - `make run`: Compiles and runs binary with default settings (`0.0.0.0:6379`).
 - `make clean`: Removes binary from `build/`.
+- `make release`: Interactive release tagging and GitHub push (or `make release VERSION=v1.0.0`).
 
 ### Manual Compilation
 ```bash

@@ -93,6 +93,9 @@ test:
 clean:
 	$(REMOVE)
 
+release:
+	@bash scripts/release.sh $(VERSION)
+
 docker-build:
 	docker build -t kenyka/kvllay:latest .
 
@@ -104,4 +107,6 @@ docker-compose-up:
 
 docker-compose-down:
 	docker compose down
+
+.PHONY: default compile compile-jemalloc compile-mimalloc static-linux static-windows run test clean release docker-build docker-run docker-compose-up docker-compose-down
 
