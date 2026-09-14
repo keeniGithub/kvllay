@@ -28,7 +28,9 @@
     #include <windows.h>
     #include <winsock2.h>
     #include <ws2tcpip.h>
-    #pragma comment(lib, "ws2_32.lib")
+    #ifdef _MSC_VER
+        #pragma comment(lib, "ws2_32.lib")
+    #endif
     using socket_t = SOCKET;
     #define IS_VALID_SOCKET(s) ((s) != INVALID_SOCKET)
     #define CLOSE_SOCKET(s) closesocket(s)
@@ -37,6 +39,23 @@
     #define ERR_INTR WSAEINTR
     #ifndef MSG_NOSIGNAL
     #define MSG_NOSIGNAL 0
+    #endif
+
+    // Fallback constants for epoll compatibility stubs on Windows
+    #ifndef EPOLLIN
+    #define EPOLLIN 0x001
+    #endif
+    #ifndef EPOLLOUT
+    #define EPOLLOUT 0x004
+    #endif
+    #ifndef EPOLLRDHUP
+    #define EPOLLRDHUP 0x2000
+    #endif
+    #ifndef EPOLLERR
+    #define EPOLLERR 0x008
+    #endif
+    #ifndef EPOLLHUP
+    #define EPOLLHUP 0x010
     #endif
 #else
     #include <sys/types.h>
@@ -271,8 +290,17 @@ private:
         ev.data.fd = fd;
         epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, fd, &ev);
     }
+
+    void set_write_interest(socket_t fd, bool enable) {
+        uint32_t events = EPOLLIN | EPOLLRDHUP;
+        if (enable) {
+            events |= EPOLLOUT;
+        }
+        modify_epoll(fd, events);
+    }
 #else
     void modify_epoll(socket_t /*fd*/, uint32_t /*events*/) {}
+    void set_write_interest(socket_t /*fd*/, bool /*enable*/) {}
 #endif
 
     void remove_connection(socket_t fd) {
@@ -285,7 +313,7 @@ private:
 
     bool handle_write(Connection& conn) {
         if (conn.write_buf.empty()) {
-            modify_epoll(conn.fd, EPOLLIN | EPOLLRDHUP);
+            set_write_interest(conn.fd, false);
             return true;
         }
 
@@ -308,7 +336,7 @@ private:
 
         conn.write_buf.clear();
         conn.write_offset = 0;
-        modify_epoll(conn.fd, EPOLLIN | EPOLLRDHUP);
+        set_write_interest(conn.fd, false);
         return true;
     }
 
@@ -381,14 +409,14 @@ private:
                     if (static_cast<size_t>(sent) < total) {
                         conn.write_buf.assign(scratch_out_batch_.data() + sent, total - sent);
                         conn.write_offset = 0;
-                        modify_epoll(conn.fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP);
+                        set_write_interest(conn.fd, true);
                     }
                 } else if (sent < 0) {
                     int err = SOCKET_ERRNO;
                     if (err == ERR_AGAIN || err == EWOULDBLOCK) {
                         conn.write_buf = std::move(scratch_out_batch_);
                         conn.write_offset = 0;
-                        modify_epoll(conn.fd, EPOLLIN | EPOLLOUT | EPOLLRDHUP);
+                        set_write_interest(conn.fd, true);
                     } else if (err != ERR_INTR) {
                         return false;
                     }
