@@ -54,8 +54,13 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
 - **Atomic Counters & Rate Limiting**: thread-safe counters with overflow checks for high-throughput rate limiters.
 - **Non-blocking Multi-Reactor Network Engine**: Event-driven architecture (`epoll` on Linux with `eventfd` notification, `WSAPoll` on Windows) with a fixed-size worker pool (`--threads` / `--io-threads`), scaling to 50,000+ concurrent connections with sub-millisecond latencies and zero thread churn.
 - **Thread Safety & Lock Striping**: 32-way sharded store with 64-byte alignment (`alignas(64)`) to eliminate false sharing, allowing concurrent writes and reads across worker threads without lock contention.
-- **TTL & Eviction**: Hybrid passive (`Lazy`) + active background garbage collector.
-- **Ultra-Lightweight**: Docker image under **1.6 MB** (`scratch` static binary).
+- **Memory Manager Optimization & High-Performance Allocators**:
+  - Pluggable allocators (`jemalloc` / `mimalloc` / `libc`) to eliminate heap fragmentation under intense key updates.
+  - In-place string buffer reuse avoiding heap churn on `SET`, `SETEX`, `MSET`.
+  - Zero-allocation numeric counters (`INCR`, `DECR`, etc.) via stack-allocated `std::to_chars`.
+  - Granular `# Memory` metrics (`mem_allocator`, `used_memory_rss`, `used_memory_peak`, `mem_fragmentation_ratio`).
+  - Active page purging (`purge_freed_memory`) on flush and background key evictions.
+- **Ultra-Lightweight**: Docker image under **1.8 MB** (`scratch` static binary).
 - **Cross-Platform**: unified codebase for Linux (POSIX sockets) and Windows (Winsock).
 
 ## Download Standalone Binary
@@ -78,7 +83,16 @@ docker compose up -d
 
 ### Building
 ```bash
+# Standard build (libc allocator)
 make compile
+
+# Build with jemalloc (recommended for high-throughput write traffic)
+make compile-jemalloc
+# or: make compile MALLOC=jemalloc
+
+# Build with mimalloc
+make compile-mimalloc
+# or: make compile MALLOC=mimalloc
 ```
 
 ### Running the Server

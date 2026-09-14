@@ -15,6 +15,7 @@
 #include <snapshot.hpp>
 #include <aof.hpp>
 #include <commands.hpp>
+#include <allocator.hpp>
 #include <event_loop.hpp>
 
 #ifdef _WIN32
@@ -158,7 +159,8 @@ public:
         if (!config_.password.empty()) {
             std::cout << " (password protected)";
         }
-        std::cout << " (io-threads: " << worker_pool_.thread_count() << ")" << std::endl;
+        std::cout << " (io-threads: " << worker_pool_.thread_count()
+                  << ", allocator: " << allocator::get_allocator_name() << ")" << std::endl;
         return true;
     }
 

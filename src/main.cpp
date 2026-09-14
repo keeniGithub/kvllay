@@ -4,7 +4,8 @@
 #include <vector>
 
 void print_version() {
-    std::cout << kvllay::constants::SERVER_NAME << " version " << kvllay::constants::VERSION << "\n";
+    std::cout << kvllay::constants::SERVER_NAME << " version " << kvllay::constants::VERSION
+              << " (" << kvllay::allocator::get_allocator_name() << ")\n";
 }
 
 void print_help(const char* prog) {

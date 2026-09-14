@@ -4,6 +4,7 @@
 #pragma once
 
 #include <constants.hpp>
+#include <allocator.hpp>
 #include <resp.hpp>
 #include <store.hpp>
 #include <snapshot.hpp>

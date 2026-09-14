@@ -8,10 +8,10 @@ COPY include/ include/
 COPY src/ src/
 COPY makefile .
 
+ARG MALLOC=libc
+
 # Build statically linked and stripped binary
-RUN g++ -std=c++17 -Wall -Wextra -O3 -flto -static -s \
-    -I include -I include/kvllay \
-    src/main.cpp -o /kvllay -pthread
+RUN make static-linux MALLOC=${MALLOC} && cp build/kvllay-linux-x86_64 /kvllay
 
 # Ultra-minimal final image (< 2 MB)
 FROM scratch

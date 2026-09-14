@@ -12,6 +12,7 @@
 │   └── kvllay/
 │       ├── kvllay.hpp      # Umbrella header including all module headers
 │       ├── constants.hpp   # Centralized version, network, store, and protocol constants
+│       ├── allocator.hpp   # Memory allocator integration (jemalloc / mimalloc / libc, RSS, purge)
 │       ├── resp.hpp        # RESP2 serialization and streaming command parser
 │       ├── store.hpp       # In-memory key-value storage engine (thread-safe, TTL, GC)
 │       ├── snapshot.hpp    # Binary point-in-time snapshot manager (CRC32, atomic rename, no fork)
@@ -184,7 +185,9 @@
 - Winsock (`-lws2_32`) on Windows.
 
 ### Make Targets
-- `make compile`: Compiles binary into `build/kvllay` (`build/kvllay.exe` on Windows).
+- `make compile`: Compiles binary into `build/kvllay` (`build/kvllay.exe` on Windows) with default allocator (`libc`).
+- `make compile MALLOC=jemalloc` or `make compile-jemalloc`: Compiles with high-performance `jemalloc`.
+- `make compile MALLOC=mimalloc` or `make compile-mimalloc`: Compiles with high-performance `mimalloc`.
 - `make run`: Compiles and runs binary with default settings (`0.0.0.0:6379`).
 - `make clean`: Removes binary from `build/`.
 
