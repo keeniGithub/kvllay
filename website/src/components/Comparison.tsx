@@ -196,7 +196,7 @@ export function Comparison() {
           Why Choose Kvllay Over Redis?
         </h2>
         <p className="text-sm sm:text-base text-[#8B9BB4] max-w-[780px] leading-[1.6]">
-          Redis is great, but often overkill. Kvllay delivers exact RESP2 compatibility with a fraction of the overhead, making it 87x smaller, 3.7x lighter, and faster than Redis across both single-client and multi-threaded workloads.
+          Redis is great, but often overkill. Kvllay delivers exact RESP2 compatibility with a fraction of the overhead, making it 87x smaller, 3.7x lighter on RAM, up to 5x faster in throughput (5.49M req/s peak), and 4.2x lower latency than Redis.
         </p>
       </Reveal>
 

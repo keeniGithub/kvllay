@@ -1,13 +1,13 @@
 <div align="center">
-  <img src="logo.png" alt="kvllay logo" width="128" style="image-rendering: pixelated; image-rendering: crisp-edges;">
+  <img src="https://raw.githubusercontent.com/thekeny/kvllay/main/logo.png" alt="kvllay logo" width="128" style="image-rendering: pixelated; image-rendering: crisp-edges;">
   <h1>kvllay</h1>
   <p><em>[pronounced: <strong>key-vi-lay</strong> · «кей-ви-лей» (key-value allay)]</em></p>
   <p>In-memory key-value store</p>
 
   <p>
     <a href="https://github.com/thekeny/kvllay/releases">Release</a> •
-    <a href="docs/ru.md">Русская документация</a> •
-    <a href="docs/en.md">English Documentation</a>
+    <a href="https://github.com/thekeny/kvllay/blob/main/docs/ru.md">Русская документация</a> •
+    <a href="https://github.com/thekeny/kvllay/blob/main/docs/en.md">English Documentation</a>
   </p>
 </div>
 

@@ -7,11 +7,11 @@ export function Documentation() {
   const docsGuides = [
     {
       title: "Core Architecture & Thread-Safety",
-      desc: "Detailed explanation of the std::shared_mutex engine, POSIX/Winsock non-blocking network layers, and Somaxconn connection pipeline.",
+      desc: "Detailed explanation of the 32-way sharded storage engine, Epoll/WSAPoll Multi-Reactor worker loops, and lock-free connection dispatching.",
     },
     {
       title: "Redis RESP2 Protocol Compatibility",
-      desc: "Complete reference for implemented commands (GET, SET, MGET, MSET, DEL, EXISTS, TTL, SETEX, INCR, DECR, DBSIZE, KEYS, AUTH, PING) and inline parsing.",
+      desc: "Complete reference for all commands: Strings (GET, SET, MGET, MSET), Counters (INCR, DECR), Lists & Queues (LPUSH, RPUSH, LPOP, RPOP), TTL, and Config.",
     },
     {
       title: "Benchmark Methodology & Repro",
