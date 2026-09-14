@@ -22,6 +22,7 @@
 #include <charconv>
 #include <limits>
 #include <constants.hpp>
+#include <allocator.hpp>
 
 namespace kvllay {
 
@@ -168,6 +169,14 @@ public:
         return used_memory_.load(std::memory_order_relaxed);
     }
 
+    size_t used_memory_peak() const noexcept {
+        return used_memory_peak_.load(std::memory_order_relaxed);
+    }
+
+    void reset_peak_memory() noexcept {
+        used_memory_peak_.store(used_memory_.load(std::memory_order_relaxed), std::memory_order_relaxed);
+    }
+
     size_t maxmemory() const noexcept {
         return maxmemory_.load(std::memory_order_relaxed);
     }
@@ -215,7 +224,10 @@ public:
     }
 
     void add_memory(size_t bytes) noexcept {
-        used_memory_.fetch_add(bytes, std::memory_order_relaxed);
+        size_t new_val = used_memory_.fetch_add(bytes, std::memory_order_relaxed) + bytes;
+        size_t cur_peak = used_memory_peak_.load(std::memory_order_relaxed);
+        while (new_val > cur_peak && !used_memory_peak_.compare_exchange_weak(cur_peak, new_val, std::memory_order_relaxed)) {
+        }
     }
 
     void sub_memory(size_t bytes) noexcept {
@@ -390,17 +402,29 @@ public:
             std::unique_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(k);
             if (it != shard.data.end()) {
-                sub_memory(estimate_entry_memory(it->first, it->second));
-                it->second = Entry{std::string(value), 0, now_sec};
+                size_t old_mem = estimate_entry_memory(it->first, it->second);
+                if (it->second.is_string()) {
+                    it->second.as_string().assign(value.data(), value.size());
+                } else {
+                    it->second.data.emplace<std::string>(value);
+                }
+                it->second.expire_at = 0;
+                it->second.touch(now_sec);
+                size_t new_mem = estimate_entry_memory(it->first, it->second);
+                if (new_mem > old_mem) {
+                    add_memory(new_mem - old_mem);
+                } else if (new_mem < old_mem) {
+                    sub_memory(old_mem - new_mem);
+                }
             } else {
                 shard.data.emplace(std::piecewise_construct,
                                    std::forward_as_tuple(std::move(k)),
                                    std::forward_as_tuple(std::string(value), 0, now_sec));
+                add_memory(estimate_string_memory(key, value));
             }
             if (!shard.keys_with_ttl.empty()) {
                 shard.keys_with_ttl.erase(std::string(key));
             }
-            add_memory(estimate_string_memory(key, value));
         }
         dirty_++;
         return true;
@@ -429,11 +453,27 @@ public:
             auto& shard = shards_[idx];
             auto it = shard.data.find(key);
             if (it != shard.data.end()) {
-                sub_memory(estimate_entry_memory(key, it->second));
+                size_t old_mem = estimate_entry_memory(key, it->second);
+                if (it->second.is_string()) {
+                    it->second.as_string().assign(value.data(), value.size());
+                } else {
+                    it->second.data.emplace<std::string>(value);
+                }
+                it->second.expire_at = 0;
+                it->second.touch(now_sec);
+                size_t new_mem = estimate_entry_memory(key, it->second);
+                if (new_mem > old_mem) {
+                    add_memory(new_mem - old_mem);
+                } else if (new_mem < old_mem) {
+                    sub_memory(old_mem - new_mem);
+                }
+            } else {
+                shard.data.emplace(std::piecewise_construct,
+                                   std::forward_as_tuple(key),
+                                   std::forward_as_tuple(value, 0, now_sec));
+                add_memory(estimate_string_memory(key, value));
             }
-            shard.data[key] = Entry{value, 0, now_sec};
             shard.keys_with_ttl.erase(key);
-            add_memory(estimate_string_memory(key, value));
         }
         dirty_ += kvs.size();
         return true;
@@ -448,11 +488,27 @@ public:
             std::unique_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(key);
             if (it != shard.data.end()) {
-                sub_memory(estimate_entry_memory(key, it->second));
+                size_t old_mem = estimate_entry_memory(key, it->second);
+                if (it->second.is_string()) {
+                    it->second.as_string().assign(value.data(), value.size());
+                } else {
+                    it->second.data.emplace<std::string>(value);
+                }
+                it->second.expire_at = expire_at;
+                it->second.touch(now_sec);
+                size_t new_mem = estimate_entry_memory(key, it->second);
+                if (new_mem > old_mem) {
+                    add_memory(new_mem - old_mem);
+                } else if (new_mem < old_mem) {
+                    sub_memory(old_mem - new_mem);
+                }
+            } else {
+                shard.data.emplace(std::piecewise_construct,
+                                   std::forward_as_tuple(key),
+                                   std::forward_as_tuple(value, expire_at, now_sec));
+                add_memory(estimate_string_memory(key, value));
             }
-            shard.data[key] = Entry{value, expire_at, now_sec};
             shard.keys_with_ttl.insert(key);
-            add_memory(estimate_string_memory(key, value));
         }
         dirty_++;
         return true;
@@ -1588,6 +1644,7 @@ public:
             shard.keys_with_ttl.clear();
         }
         used_memory_.store(0, std::memory_order_relaxed);
+        allocator::purge_freed_memory();
         dirty_++;
     }
 
@@ -1810,23 +1867,25 @@ private:
             return IncrStatus::Overflow;
         }
 
-        std::string new_str = std::to_string(new_val);
+        char num_buf[32];
+        auto [ptr, ec] = std::to_chars(num_buf, num_buf + sizeof(num_buf), new_val);
+        std::string_view new_sv(num_buf, ptr - num_buf);
         uint64_t now_sec = current_lru_clock();
         if (it != shard.data.end()) {
             size_t old_size = it->second.as_string().size();
-            size_t new_size = new_str.size();
+            size_t new_size = new_sv.size();
             if (new_size > old_size) {
                 add_memory(new_size - old_size);
             } else if (old_size > new_size) {
                 sub_memory(old_size - new_size);
             }
-            it->second.as_string() = std::move(new_str);
+            it->second.as_string().assign(new_sv.data(), new_sv.size());
             it->second.touch(now_sec);
         } else {
             shard.data.emplace(std::piecewise_construct,
                                std::forward_as_tuple(std::move(k)),
-                               std::forward_as_tuple(std::move(new_str), 0, now_sec));
-            add_memory(estimate_string_memory(key, std::string_view(shard.data.find(std::string(key))->second.as_string())));
+                               std::forward_as_tuple(std::string(new_sv), 0, now_sec));
+            add_memory(estimate_string_memory(key, new_sv));
         }
 
         dirty_++;
@@ -1857,6 +1916,7 @@ private:
     std::mutex eviction_cv_mutex_;
     std::condition_variable eviction_cv_;
     std::atomic<size_t> used_memory_{0};
+    std::atomic<size_t> used_memory_peak_{0};
     std::atomic<size_t> maxmemory_{0};
     constants::MaxmemoryPolicy maxmemory_policy_{constants::MaxmemoryPolicy::NoEviction};
     std::atomic<size_t> evicted_keys_count_{0};

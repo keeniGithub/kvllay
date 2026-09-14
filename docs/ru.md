@@ -226,16 +226,36 @@ kvllay поддерживает два дополняющих друг друг�
   - `allkeys-random` — случайный выбор и удаление ключей для освобождения места.
   - `volatile-ttl` — удаление ключей с наименьшим оставшимся TTL.
 - **Мониторинг памяти**:
-  Секция `# Memory` в выводе команды `INFO` отображает ключевые метрики:
+  Секция `# Memory` в выводе команды `INFO` отображает ключевые метрики в соответствии со стандартом Redis:
   ```text
   # Memory
   used_memory:10485760
   used_memory_human:10.00M
+  used_memory_rss:12582912
+  used_memory_rss_human:12.00M
+  used_memory_peak:11534336
+  used_memory_peak_human:11.00M
   maxmemory:67108864
   maxmemory_human:64.00M
   maxmemory_policy:allkeys-lru
+  mem_fragmentation_ratio:1.20
+  mem_allocator:jemalloc-5.3.1
   evicted_keys:142
   ```
+
+### 3.9 Оптимизация менеджера памяти и аллокаторы (`jemalloc` / `mimalloc`)
+
+Для высоконагруженных сценариев с миллионами операций перезаписи ключей в секунду критически важно избегать фрагментации кучи и минимизировать накладные расходы распределителя памяти:
+
+1. **Поддержка масштабируемых аллокаторов (`jemalloc` и `mimalloc`)**:
+   - `jemalloc` (используется по умолчанию в Redis) изолирует память по потокам и использует бины фиксированных размеров, предотвращая внешнюю фрагментацию при интенсивных циклах перезаписи и удаления ключей.
+   - `mimalloc` (от Microsoft) обеспечивает повышенную локальность кэша CPU и сверхнизкий оверхед метаданных.
+   - Полное автоматическое переопределение операторов `new`/`delete` и функций `malloc`/`free`.
+2. **In-place переиспользование буферов строк**:
+   - При перезаписи существующих ключей (`SET`, `SETEX`, `MSET`) `kvllay` не уничтожает запись и не выделяет новую память на куче, а обновляет данные на месте через `std::string::assign`, повторно используя уже выделенную емкость буфера.
+   - При инкременте/декременте счетчиков (`INCR`, `DECR`, `INCRBY`, `DECRBY`) число форматируется через `std::to_chars` на стеке без единой динамической аллокации.
+3. **Освобождение неиспользуемых страниц операционной системе (`purge_freed_memory`)**:
+   - При выполнении `FLUSHDB`/`FLUSHALL` и активном вытеснении ключей `kvllay` инициирует принудительный возврат неиспользуемых страниц ОС (`mallctl arena.4096.purge` в `jemalloc`, `mi_collect(true)` в `mimalloc`, `malloc_trim(0)` в `glibc`), предотвращая раздувание Resident Set Size (RSS).
 
 ---
 
@@ -261,8 +281,16 @@ chmod +x kvllay-linux-x86_64
 Для сборки требуется компилятор с поддержкой C++17 (`g++`, `clang++`, или MSVC):
 
 ```bash
-# Сборка бинарного файла build/kvllay
+# Сборка со стандартным системным аллокатором (libc)
 make compile
+
+# Сборка с высокопроизводительным jemalloc
+make compile-jemalloc
+# или: make compile MALLOC=jemalloc
+
+# Сборка с mimalloc
+make compile-mimalloc
+# или: make compile MALLOC=mimalloc
 
 # Запуск с параметрами по умолчанию (0.0.0.0:6379)
 make run
@@ -297,6 +325,7 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
   --appendfsync <политика>       Политика fsync для AOF: always, everysec, no (по умолчанию: everysec)
   --maxmemory <байт|mb|gb>       Максимальный лимит памяти (например, 512mb, 1gb, 0=без лимита)
   --maxmemory-policy <политика>  Политика вытеснения: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl
+  --threads, --io-threads <число> Число потоков воркеров Event Loop (по умолчанию: автоопределение ядер CPU)
   -v, --version                  Отображение текущей версии приложения
   --help                         Показать справку по использованию
 ```
@@ -311,6 +340,9 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
 
 # Запуск с ограничением памяти 256 МБ и вытеснением наименее используемых ключей
 ./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+# Запуск с 8 рабочими потоками реактора событий (Multi-Reactor Event Loop)
+./build/kvllay -p 6379 --threads 8
 
 # Запуск с периодическими снапшотами (каждые 60 секунд)
 ./build/kvllay -p 6379 --save 60

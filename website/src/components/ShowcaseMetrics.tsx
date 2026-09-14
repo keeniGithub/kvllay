@@ -7,25 +7,25 @@ export function ShowcaseMetrics() {
       icon: IconBox,
       value: "1.6 MB",
       title: "Docker Container",
-      comparison: "Redis is ~140 MB (90x smaller)",
+      comparison: "Redis is ~140 MB (87x smaller)",
     },
     {
       icon: IconBolt,
-      value: "2.2 ms",
+      value: "3.2 ms",
       title: "Cold Start Time",
-      comparison: "Redis takes ~35 ms (15x faster)",
+      comparison: "Redis takes ~7.6 ms (2.4x faster)",
     },
     {
       icon: IconCpu,
-      value: "2.4 MB",
+      value: "4.1 MB",
       title: "Idle RAM Usage",
-      comparison: "Redis uses ~11.5 MB (4.8x lighter)",
+      comparison: "Redis uses ~15.2 MB (3.7x lighter)",
     },
     {
       icon: IconGauge,
       value: "5.49M req/s",
       title: "Peak Throughput",
-      comparison: "p50 latency 10 μs (~5x vs Redis)",
+      comparison: "p50 latency 10 μs (~5x vs baseline Redis)",
     },
   ]
 

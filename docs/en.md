@@ -226,16 +226,36 @@ kvllay provides two complementary, high-performance data safety mechanisms desig
   - `allkeys-random` — Random key eviction to reclaim memory.
   - `volatile-ttl` — Evicts keys with the shortest remaining TTL.
 - **Memory Diagnostics**:
-  The `# Memory` section in `INFO` displays detailed metrics:
+  The `# Memory` section in `INFO` displays comprehensive standard Redis metrics:
   ```text
   # Memory
   used_memory:10485760
   used_memory_human:10.00M
+  used_memory_rss:12582912
+  used_memory_rss_human:12.00M
+  used_memory_peak:11534336
+  used_memory_peak_human:11.00M
   maxmemory:67108864
   maxmemory_human:64.00M
   maxmemory_policy:allkeys-lru
+  mem_fragmentation_ratio:1.20
+  mem_allocator:jemalloc-5.3.1
   evicted_keys:142
   ```
+
+### 3.9 Memory Manager Optimization & Pluggable Allocators (`jemalloc` / `mimalloc`)
+
+For high-throughput workloads with millions of key overwrites per second, eliminating heap fragmentation and allocation contention is vital:
+
+1. **Pluggable High-Performance Allocators (`jemalloc` and `mimalloc`)**:
+   - `jemalloc` (default in Redis) partitions memory across thread-specific arenas and size-classed bins, completely preventing heap fragmentation caused by frequent key allocations and removals.
+   - `mimalloc` (by Microsoft) provides cache-conscious thread-local allocation with minimal metadata overhead.
+   - Transparent override of C++ operators `new`/`delete` and standard `malloc`/`free`.
+2. **In-place String Buffer Reuse**:
+   - During key updates (`SET`, `SETEX`, `MSET`), `kvllay` updates string contents in-place via `std::string::assign`, reusing allocated buffer capacity instead of destroying the record and allocating fresh memory on the heap.
+   - For atomic counters (`INCR`, `DECR`, `INCRBY`, `DECRBY`), numeric formatting is executed via `std::to_chars` into a stack buffer with zero dynamic allocations.
+3. **OS Page Purging (`purge_freed_memory`)**:
+   - During `FLUSHDB`/`FLUSHALL` and active eviction passes, `kvllay` signals the allocator to release dirty pages back to the operating system (`mallctl arena.4096.purge` in `jemalloc`, `mi_collect(true)` in `mimalloc`, `malloc_trim(0)` in `glibc`), keeping process RSS minimal.
 
 ---
 
@@ -261,8 +281,16 @@ chmod +x kvllay-linux-x86_64
 Requirements: C++17 compatible compiler (`g++`, `clang++`, or MSVC):
 
 ```bash
-# Compile binary to build/kvllay
+# Compile with default system allocator (libc)
 make compile
+
+# Compile with high-performance jemalloc
+make compile-jemalloc
+# or: make compile MALLOC=jemalloc
+
+# Compile with mimalloc
+make compile-mimalloc
+# or: make compile MALLOC=mimalloc
 
 # Run with defaults (0.0.0.0:6379)
 make run
@@ -297,6 +325,7 @@ Options:
   --appendfsync <policy>         AOF fsync policy: always, everysec, no (default: everysec)
   --maxmemory <bytes|mb|gb>      Max memory limit (e.g. 512mb, 1gb, 0=unlimited)
   --maxmemory-policy <policy>    Eviction policy: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl
+  --threads, --io-threads <n>    Number of worker event loop threads (default: auto-detected CPU cores)
   -v, --version                  Display version information
   --help                         Display this help message
 ```
@@ -311,6 +340,9 @@ Examples:
 
 # Run with 256MB memory limit and LRU eviction
 ./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+# Run with 8 worker event loop threads (Multi-Reactor Event Loop)
+./build/kvllay -p 6379 --threads 8
 
 # Auto-save snapshot every 60 seconds
 ./build/kvllay -p 6379 --save 60

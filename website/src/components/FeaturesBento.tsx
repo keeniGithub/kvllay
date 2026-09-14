@@ -11,13 +11,13 @@ export function FeaturesBento() {
     },
     {
       icon: IconShield,
-      title: "Thread-Safe Concurrency",
-      desc: "Fine-grained std::shared_mutex allows unlimited parallel concurrent readers on GET/EXISTS, while safely serializing writes on SET and DEL without corruption.",
+      title: "Multi-Reactor & Sharding",
+      desc: "Epoll & WSAPoll worker pool combined with 32-way lock-striped sharded storage (alignas(64)) delivers over 5.49M req/s with zero false sharing.",
     },
     {
       icon: IconClock,
-      title: "TTL & Hybrid Eviction",
-      desc: "Full EXPIRE, PEXPIRE, TTL, PTTL, and PERSIST support. Combines instant lazy cleanup on read requests with a passive background garbage collector thread.",
+      title: "TTL, Persistence & LRU",
+      desc: "Point-in-time CRC32 snapshots, double-buffered AOF log with async fsync, passive/active TTL sweeps, and memory eviction (allkeys-lru, volatile-lru).",
     },
     {
       icon: IconLock,

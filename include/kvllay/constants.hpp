@@ -21,6 +21,10 @@ inline constexpr const char* DEFAULT_HOST = "0.0.0.0";
 
 inline constexpr size_t CLIENT_BUFFER_SIZE = 65536;
 
+inline constexpr size_t DEFAULT_IO_THREADS = 0; // 0 = auto-detect CPU cores
+inline constexpr int MAX_EVENTS_PER_LOOP = 256;
+inline constexpr int EPOLL_TIMEOUT_MS = 50;
+
 inline constexpr uint64_t DEFAULT_EVICTION_INTERVAL_MS = 100;
 inline constexpr size_t DEFAULT_EVICTION_BATCH_LIMIT = 100;
 

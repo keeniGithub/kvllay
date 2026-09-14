@@ -12,11 +12,13 @@
 │   └── kvllay/
 │       ├── kvllay.hpp      # Umbrella header including all module headers
 │       ├── constants.hpp   # Centralized version, network, store, and protocol constants
+│       ├── allocator.hpp   # Memory allocator integration (jemalloc / mimalloc / libc, RSS, purge)
 │       ├── resp.hpp        # RESP2 serialization and streaming command parser
 │       ├── store.hpp       # In-memory key-value storage engine (thread-safe, TTL, GC)
 │       ├── snapshot.hpp    # Binary point-in-time snapshot manager (CRC32, atomic rename, no fork)
 │       ├── aof.hpp         # Append-Only Log manager (double-buffering, async fsync, no-fork rewrite)
 │       ├── commands.hpp    # Command dispatcher and individual command handlers
+│       ├── event_loop.hpp  # Non-blocking Event Loop & Worker Pool (epoll / WSAPoll Multi-Reactor)
 │       └── server.hpp      # Cross-platform TCP socket server (POSIX / Winsock)
 ├── src/
 │   ├── main.cpp            # Entry point, CLI argument parsing, server bootstrap
@@ -142,29 +144,25 @@
 - **Format & Interoperability**: Formatted as standard Redis RESP2 commands (`*<count>\r\n...`), allowing direct inspection, debugging, and pipe loading into standard Redis tools.
 - **Background Rewrite**: Non-blocking `BGREWRITEAOF` dumps in-memory state to a temporary rewrite file, appends newly arriving mutations, and atomically replaces the active AOF log.
 
-### 6. Networking & Server (`include/kvllay/server.hpp`)
-- **Class**: `kvllay::Server`
-- **Configuration**: `kvllay::ServerConfig` encapsulates port, host, password, snapshot options, AOF options, and memory limits.
-- **Platform Abstraction**:
-  - Windows: Uses `winsock2.h`, `ws2tcpip.h`, `SOCKET`, `WSAStartup`/`WSACleanup`, linked with `-lws2_32`.
-  - POSIX / Linux: Uses standard socket API (`sys/socket.h`, `netinet/in.h`, `arpa/inet.h`, `unistd.h`).
-- **Connection Model**:
-  - Main thread creates socket, binds to specified IP/port, sets `SO_REUSEADDR`, and listens with `SOMAXCONN`.
-  - Accept loop creates a detached `std::thread(&Server::handle_client, this, client_socket)` per connection.
-  - Sets `TCP_NODELAY` on every accepted socket.
-- **Client Handler Pipeline**:
-  - 4096-byte chunk buffer reads into persistent per-client `std::string client_buffer`.
-  - Loops over `client_buffer` with `Resp::parse_command`:
-    - `Success`: Erases parsed bytes from `client_buffer`, executes command via `command_handler_.dispatch`, transmits full response using `send_all`. Closes socket if `should_close` is set.
-    - `Incomplete`: Breaks loop and waits for more socket data via `recv`.
-    - `Error`: Sends `-ERR Protocol error\r\n` and closes connection immediately.
-  - Tracks connection-level `bool authenticated` (defaults to `true` if server password is empty, `false` otherwise).
+### 6. Networking & Server (`include/kvllay/server.hpp`, `include/kvllay/event_loop.hpp`)
+- **Classes**: `kvllay::Server`, `kvllay::WorkerPool`, `kvllay::WorkerEventLoop`, `kvllay::Connection`.
+- **Architecture (Multi-Reactor / Reactor-per-Thread)**:
+  - Replaces old blocking «1 thread per socket» model with non-blocking event-driven reactors.
+  - Main Acceptor thread binds and listens on `server_socket_`, accepting connections and setting `O_NONBLOCK` / `FIONBIO`, `TCP_NODELAY`, and expanded socket buffers (`SO_RCVBUF`/`SO_SNDBUF` 256 KB).
+  - Fixed-size `WorkerPool` (by default `std::clamp(hardware_concurrency(), 1u, 16u)` threads, or configured via `--threads` / `--io-threads`) manages independent `WorkerEventLoop` instances.
+  - Accepted sockets are dispatched across worker threads via lock-free round-robin (`fetch_add`).
+  - **Linux Multiplexing**: Native `epoll` (`epoll_create1`, `epoll_ctl`, `epoll_wait`) with instant inter-thread notification via `eventfd`.
+  - **Windows Multiplexing**: Native `WSAPoll` array handling.
+  - **Non-blocking Write Buffering**: If a socket's send buffer fills up during a large response, residual bytes are queued in `Connection::write_buf` and `EPOLLOUT` is registered until fully flushed, preventing thread stalls.
+  - **Strict Ordering**: Because each connection is pinned to exactly one worker event loop, pipelined RESP commands execute in strict FIFO order without mutex contention.
+  - **Zero Allocations in Hot Path**: Worker threads reuse thread-local scratch vectors (`scratch_args_`, `scratch_unescape_buf_`, `scratch_out_batch_`).
 
 ### 7. CLI Entrypoint (`src/main.cpp`)
 - Parses CLI flags and positional arguments:
   - `-p`, `--port <port>`: Port to listen on (default: `6379`).
   - `-h`, `--bind`, `--host <host>`: Bind IP (default: `0.0.0.0`).
   - `-a`, `--requirepass`, `--password <pass>`: Server auth password.
+  - `--threads`, `--io-threads <n>`: Number of worker event loop threads (default: auto-detected CPU cores).
   - `--save <secs> [changes]`: Auto-save snapshot every `<secs>` if `[changes]` occurred.
   - `--snapshot`, `--save-file <file>`: Snapshot path (default: `dump.kvl`).
   - `--no-snapshot`: Disables snapshot file loading and saving.
@@ -187,7 +185,9 @@
 - Winsock (`-lws2_32`) on Windows.
 
 ### Make Targets
-- `make compile`: Compiles binary into `build/kvllay` (`build/kvllay.exe` on Windows).
+- `make compile`: Compiles binary into `build/kvllay` (`build/kvllay.exe` on Windows) with default allocator (`libc`).
+- `make compile MALLOC=jemalloc` or `make compile-jemalloc`: Compiles with high-performance `jemalloc`.
+- `make compile MALLOC=mimalloc` or `make compile-mimalloc`: Compiles with high-performance `mimalloc`.
 - `make run`: Compiles and runs binary with default settings (`0.0.0.0:6379`).
 - `make clean`: Removes binary from `build/`.
 

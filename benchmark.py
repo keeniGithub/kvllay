@@ -124,3 +124,4 @@ if __name__ == "__main__":
     print(f"=== Running kvllay Benchmark on port {port} ===")
     benchmark_single(port, pwd, iterations=5000)
     benchmark_concurrent(port, pwd, num_threads=8, ops_per_thread=2000)
+    benchmark_concurrent(port, pwd, num_threads=32, ops_per_thread=1000)

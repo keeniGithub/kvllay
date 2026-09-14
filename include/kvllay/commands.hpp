@@ -12,6 +12,7 @@
 #include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
+#include <allocator.hpp>
 #include <snapshot.hpp>
 #include <aof.hpp>
 
@@ -474,9 +475,19 @@ private:
             info += "# Memory\r\n";
             info += "used_memory:" + std::to_string(store_.used_memory()) + "\r\n";
             info += "used_memory_human:" + constants::format_memory_human(store_.used_memory()) + "\r\n";
+            size_t rss = allocator::get_rss_bytes();
+            info += "used_memory_rss:" + std::to_string(rss) + "\r\n";
+            info += "used_memory_rss_human:" + constants::format_memory_human(rss) + "\r\n";
+            info += "used_memory_peak:" + std::to_string(store_.used_memory_peak()) + "\r\n";
+            info += "used_memory_peak_human:" + constants::format_memory_human(store_.used_memory_peak()) + "\r\n";
             info += "maxmemory:" + std::to_string(store_.maxmemory()) + "\r\n";
             info += "maxmemory_human:" + constants::format_memory_human(store_.maxmemory()) + "\r\n";
             info += "maxmemory_policy:" + constants::maxmemory_policy_to_string(store_.maxmemory_policy()) + "\r\n";
+            double frag = allocator::get_fragmentation_ratio(store_.used_memory(), rss);
+            char frag_buf[32];
+            std::snprintf(frag_buf, sizeof(frag_buf), "%.2f", frag);
+            info += "mem_fragmentation_ratio:" + std::string(frag_buf) + "\r\n";
+            info += "mem_allocator:" + allocator::get_allocator_name() + "\r\n";
             info += "evicted_keys:" + std::to_string(store_.evicted_keys_count()) + "\r\n";
         }
         if (all || section == "persistence" || section == "default") {

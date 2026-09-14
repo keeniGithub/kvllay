@@ -1,13 +1,13 @@
 <div align="center">
-  <img src="logo.png" alt="kvllay logo" width="128" style="image-rendering: pixelated; image-rendering: crisp-edges;">
+  <img src="https://raw.githubusercontent.com/thekeny/kvllay/main/logo.png" alt="kvllay logo" width="128" style="image-rendering: pixelated; image-rendering: crisp-edges;">
   <h1>kvllay</h1>
   <p><em>[pronounced: <strong>key-vi-lay</strong> · «кей-ви-лей» (key-value allay)]</em></p>
   <p>In-memory key-value store</p>
 
   <p>
     <a href="https://github.com/thekeny/kvllay/releases">Release</a> •
-    <a href="docs/ru.md">Русская документация</a> •
-    <a href="docs/en.md">English Documentation</a>
+    <a href="https://github.com/thekeny/kvllay/blob/main/docs/ru.md">Русская документация</a> •
+    <a href="https://github.com/thekeny/kvllay/blob/main/docs/en.md">English Documentation</a>
   </p>
 </div>
 
@@ -52,9 +52,15 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - **Snapshots (`dump.kvl`)**: Compact binary format with CRC32 data integrity, atomic file rename, and zero `fork()` (no page-table pauses or Copy-On-Write memory doubling).
   - **Append-Only Log (`kvllay.aof`)**: Asynchronous double-buffered logger with configurable fsync (`always`, `everysec`, `no`), decoupling client request latency from disk I/O.
 - **Atomic Counters & Rate Limiting**: thread-safe counters with overflow checks for high-throughput rate limiters.
-- **Thread Safety**: `std::shared_mutex` (fast concurrent reads with `GET`, synchronized writes with `SET`/`DEL`).
-- **TTL & Eviction**: Hybrid passive (`Lazy`) + active background garbage collector.
-- **Ultra-Lightweight**: Docker image under **1.6 MB** (`scratch` static binary).
+- **Non-blocking Multi-Reactor Network Engine**: Event-driven architecture (`epoll` on Linux with `eventfd` notification, `WSAPoll` on Windows) with a fixed-size worker pool (`--threads` / `--io-threads`), scaling to 50,000+ concurrent connections with sub-millisecond latencies and zero thread churn.
+- **Thread Safety & Lock Striping**: 32-way sharded store with 64-byte alignment (`alignas(64)`) to eliminate false sharing, allowing concurrent writes and reads across worker threads without lock contention.
+- **Memory Manager Optimization & High-Performance Allocators**:
+  - Pluggable allocators (`jemalloc` / `mimalloc` / `libc`) to eliminate heap fragmentation under intense key updates.
+  - In-place string buffer reuse avoiding heap churn on `SET`, `SETEX`, `MSET`.
+  - Zero-allocation numeric counters (`INCR`, `DECR`, etc.) via stack-allocated `std::to_chars`.
+  - Granular `# Memory` metrics (`mem_allocator`, `used_memory_rss`, `used_memory_peak`, `mem_fragmentation_ratio`).
+  - Active page purging (`purge_freed_memory`) on flush and background key evictions.
+- **Ultra-Lightweight**: Docker image under **1.8 MB** (`scratch` static binary).
 - **Cross-Platform**: unified codebase for Linux (POSIX sockets) and Windows (Winsock).
 
 ## Download Standalone Binary
@@ -77,7 +83,16 @@ docker compose up -d
 
 ### Building
 ```bash
+# Standard build (libc allocator)
 make compile
+
+# Build with jemalloc (recommended for high-throughput write traffic)
+make compile-jemalloc
+# or: make compile MALLOC=jemalloc
+
+# Build with mimalloc
+make compile-mimalloc
+# or: make compile MALLOC=mimalloc
 ```
 
 ### Running the Server
@@ -102,6 +117,9 @@ make run
 
 # Run with memory limit and LRU eviction policy
 ./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+# Run with custom number of worker event loop threads (default: auto-detected CPU cores)
+./build/kvllay -p 6379 --threads 8
 
 # View all options
 ./build/kvllay --help
