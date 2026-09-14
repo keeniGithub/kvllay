@@ -297,6 +297,7 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
   --appendfsync <политика>       Политика fsync для AOF: always, everysec, no (по умолчанию: everysec)
   --maxmemory <байт|mb|gb>       Максимальный лимит памяти (например, 512mb, 1gb, 0=без лимита)
   --maxmemory-policy <политика>  Политика вытеснения: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl
+  --threads, --io-threads <число> Число потоков воркеров Event Loop (по умолчанию: автоопределение ядер CPU)
   -v, --version                  Отображение текущей версии приложения
   --help                         Показать справку по использованию
 ```
@@ -311,6 +312,9 @@ g++ -std=c++17 -Wall -Wextra -O2 -I header -I include -I include/kvllay -D _WIN3
 
 # Запуск с ограничением памяти 256 МБ и вытеснением наименее используемых ключей
 ./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+# Запуск с 8 рабочими потоками реактора событий (Multi-Reactor Event Loop)
+./build/kvllay -p 6379 --threads 8
 
 # Запуск с периодическими снапшотами (каждые 60 секунд)
 ./build/kvllay -p 6379 --save 60

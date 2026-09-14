@@ -52,7 +52,8 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - **Snapshots (`dump.kvl`)**: Compact binary format with CRC32 data integrity, atomic file rename, and zero `fork()` (no page-table pauses or Copy-On-Write memory doubling).
   - **Append-Only Log (`kvllay.aof`)**: Asynchronous double-buffered logger with configurable fsync (`always`, `everysec`, `no`), decoupling client request latency from disk I/O.
 - **Atomic Counters & Rate Limiting**: thread-safe counters with overflow checks for high-throughput rate limiters.
-- **Thread Safety**: `std::shared_mutex` (fast concurrent reads with `GET`, synchronized writes with `SET`/`DEL`).
+- **Non-blocking Multi-Reactor Network Engine**: Event-driven architecture (`epoll` on Linux with `eventfd` notification, `WSAPoll` on Windows) with a fixed-size worker pool (`--threads` / `--io-threads`), scaling to 50,000+ concurrent connections with sub-millisecond latencies and zero thread churn.
+- **Thread Safety & Lock Striping**: 32-way sharded store with 64-byte alignment (`alignas(64)`) to eliminate false sharing, allowing concurrent writes and reads across worker threads without lock contention.
 - **TTL & Eviction**: Hybrid passive (`Lazy`) + active background garbage collector.
 - **Ultra-Lightweight**: Docker image under **1.6 MB** (`scratch` static binary).
 - **Cross-Platform**: unified codebase for Linux (POSIX sockets) and Windows (Winsock).
@@ -102,6 +103,9 @@ make run
 
 # Run with memory limit and LRU eviction policy
 ./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+# Run with custom number of worker event loop threads (default: auto-detected CPU cores)
+./build/kvllay -p 6379 --threads 8
 
 # View all options
 ./build/kvllay --help

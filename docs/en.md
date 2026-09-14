@@ -297,6 +297,7 @@ Options:
   --appendfsync <policy>         AOF fsync policy: always, everysec, no (default: everysec)
   --maxmemory <bytes|mb|gb>      Max memory limit (e.g. 512mb, 1gb, 0=unlimited)
   --maxmemory-policy <policy>    Eviction policy: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl
+  --threads, --io-threads <n>    Number of worker event loop threads (default: auto-detected CPU cores)
   -v, --version                  Display version information
   --help                         Display this help message
 ```
@@ -311,6 +312,9 @@ Examples:
 
 # Run with 256MB memory limit and LRU eviction
 ./build/kvllay -p 6379 --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+# Run with 8 worker event loop threads (Multi-Reactor Event Loop)
+./build/kvllay -p 6379 --threads 8
 
 # Auto-save snapshot every 60 seconds
 ./build/kvllay -p 6379 --save 60

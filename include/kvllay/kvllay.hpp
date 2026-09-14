@@ -9,6 +9,7 @@
 #include <snapshot.hpp>
 #include <aof.hpp>
 #include <commands.hpp>
+#include <event_loop.hpp>
 #include <server.hpp>
 
 #endif // KVLLAY_INCLUDES

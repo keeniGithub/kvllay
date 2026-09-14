@@ -22,6 +22,7 @@ void print_help(const char* prog) {
               << "  --appendfsync <policy>         AOF fsync policy: always, everysec, no (default: everysec)\n"
               << "  --maxmemory <bytes|mb>         Max memory limit (e.g. 512mb, 1gb, 0=unlimited)\n"
               << "  --maxmemory-policy <policy>    Eviction policy: noeviction, allkeys-lru, volatile-lru, allkeys-random, volatile-ttl\n"
+              << "  --threads, --io-threads <n>    Number of worker event loop threads (default: auto)\n"
               << "  -v, --version                  Display version information\n"
               << "  --help                         Display this help message\n\n"
               << "Examples:\n"
@@ -81,6 +82,13 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--maxmemory-policy" && i + 1 < argc) {
             if (!kvllay::constants::parse_maxmemory_policy(argv[++i], config.maxmemory_policy)) {
                 std::cerr << "Invalid maxmemory policy: " << argv[i] << "\n";
+                return 1;
+            }
+        } else if ((arg == "--threads" || arg == "--io-threads") && i + 1 < argc) {
+            try {
+                config.io_threads = std::stoul(argv[++i]);
+            } catch (...) {
+                std::cerr << "Invalid threads value: " << argv[i] << "\n";
                 return 1;
             }
         } else if (arg.rfind("-", 0) != 0) {
