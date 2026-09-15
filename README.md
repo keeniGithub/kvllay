@@ -47,6 +47,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `BGREWRITEAOF` (background AOF compaction without `fork()`)
   - `ECHO message`
   - `COMMAND` / `COMMAND DOCS` (redis-cli handshake)
+  - `HELLO 2|3` (RESP2/RESP3 handshake, including optional `AUTH` and `SETNAME`)
   - `INFO` (includes `# Persistence`)
   - `QUIT`
 - **Lists & Task Queues (Basic Structures)**: $O(1)$ push/pop operations powered by `std::deque` and 32-way lock striping for high-throughput message buffers, job queues, and LIFO/FIFO pipelines.

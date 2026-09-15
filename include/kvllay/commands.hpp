@@ -28,6 +28,7 @@ struct CommandResult {
 
 struct ClientSession {
     uint64_t id = 0;
+    int protocol = 2;
     bool name_set = false;
     std::string name;
     std::string lib_name;
@@ -85,6 +86,13 @@ public:
 
         if (iequals(cmd, "AUTH")) {
             handle_auth_sv(args, authenticated, server_password, out);
+            return;
+        }
+
+        // HELLO is allowed before authentication because it can carry the
+        // AUTH subcommand itself (HELLO 3 AUTH default password).
+        if (iequals(cmd, "HELLO")) {
+            handle_hello_sv(args, authenticated, server_password, client, out);
             return;
         }
 
@@ -375,8 +383,6 @@ private:
                 return;
             }
             auto clients = client_snapshot();
-            // A direct command invocation (without a live socket) still gets a
-            // useful single-client response.
             if (client.id != 0 && clients.empty()) clients.push_back(client);
             std::string body;
             for (const auto& item : clients) {
@@ -412,6 +418,96 @@ private:
         }
 
         Resp::append_error(out, "WRONGPASS invalid username-password pair or user is disabled.");
+    }
+
+    void append_hello_info_resp2(std::string& out, uint64_t client_id) {
+        // Redis represents the HELLO map as a flat array when RESP2 is
+        // selected. Keep the fields stable so clients can inspect them.
+        Resp::append_array_header(out, 14);
+        Resp::append_bulk_string(out, "server");
+        Resp::append_bulk_string(out, constants::SERVER_NAME);
+        Resp::append_bulk_string(out, "version");
+        Resp::append_bulk_string(out, constants::VERSION);
+        Resp::append_bulk_string(out, "proto");
+        Resp::append_integer(out, 2);
+        Resp::append_bulk_string(out, "id");
+        Resp::append_integer(out, static_cast<long long>(client_id));
+        Resp::append_bulk_string(out, "mode");
+        Resp::append_bulk_string(out, "standalone");
+        Resp::append_bulk_string(out, "role");
+        Resp::append_bulk_string(out, "master");
+        Resp::append_bulk_string(out, "modules");
+        Resp::append_empty_array(out);
+    }
+
+    void append_hello_info_resp3(std::string& out, uint64_t client_id) {
+        // RESP3 map: server, version, proto, id, mode, role and modules.
+        out += "%7\r\n";
+        Resp::append_bulk_string(out, "server");
+        Resp::append_bulk_string(out, constants::SERVER_NAME);
+        Resp::append_bulk_string(out, "version");
+        Resp::append_bulk_string(out, constants::VERSION);
+        Resp::append_bulk_string(out, "proto");
+        Resp::append_integer(out, 3);
+        Resp::append_bulk_string(out, "id");
+        Resp::append_integer(out, static_cast<long long>(client_id));
+        Resp::append_bulk_string(out, "mode");
+        Resp::append_bulk_string(out, "standalone");
+        Resp::append_bulk_string(out, "role");
+        Resp::append_bulk_string(out, "master");
+        Resp::append_bulk_string(out, "modules");
+        Resp::append_empty_array(out);
+    }
+
+    void handle_hello_sv(const std::vector<std::string_view>& args,
+                         bool& authenticated,
+                         const std::string& server_password,
+                         ClientSession& client,
+                         std::string& out) {
+        if (args.size() > 1) {
+            long long version = 0;
+            auto [ptr, ec] = std::from_chars(args[1].data(), args[1].data() + args[1].size(), version);
+            if (ec != std::errc() || ptr != args[1].data() + args[1].size() || (version != 2 && version != 3)) {
+                Resp::append_error(out, "NOPROTO HELLO supports RESP2 and RESP3");
+                return;
+            }
+            client.protocol = static_cast<int>(version);
+        }
+
+        size_t i = 2;
+        while (i < args.size()) {
+            if (iequals(args[i], "AUTH")) {
+                if (i + 2 >= args.size() || !iequals(args[i + 1], "DEFAULT")) {
+                    Resp::append_error(out, "syntax error");
+                    return;
+                }
+                if (!server_password.empty() && args[i + 2] != server_password) {
+                    Resp::append_error(out, "WRONGPASS invalid username-password pair or user is disabled.");
+                    return;
+                }
+                authenticated = true;
+                i += 3;
+            } else if (iequals(args[i], "SETNAME")) {
+                if (i + 1 >= args.size() || args[i + 1].size() > 512) {
+                    Resp::append_error(out, "syntax error");
+                    return;
+                }
+                client.name.assign(args[i + 1]);
+                client.name_set = true;
+                i += 2;
+            } else {
+                Resp::append_error(out, "syntax error");
+                return;
+            }
+        }
+
+        if (!server_password.empty() && !authenticated) {
+            Resp::append_error(out, "NOAUTH Authentication required.");
+            return;
+        }
+
+        if (client.protocol == 3) append_hello_info_resp3(out, client.id);
+        else append_hello_info_resp2(out, client.id);
     }
 
     void handle_ping_sv(const std::vector<std::string_view>& args, std::string& out) {

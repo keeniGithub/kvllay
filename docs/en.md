@@ -190,6 +190,7 @@ Lists in `kvllay` are implemented using a cache-friendly double-ended queue buff
 | `SELECT index` | Selects logical database (DB 0 supported) | `SELECT 0` | `+OK\r\n` (or `-ERR DB index is out of range`) |
 | `FLUSHDB` / `FLUSHALL` | Clears all keys and timers | `FLUSHDB` | `+OK\r\n` |
 | `COMMAND` / `COMMAND DOCS`| Handshake compatibility for `redis-cli` | `COMMAND` | `*0\r\n` (empty array) |
+| `HELLO [2|3] [AUTH user password] [SETNAME name]` | RESP2/RESP3 protocol handshake | `HELLO 3` | RESP3 handshake map (or RESP2 array for `HELLO 2`) |
 | `INFO [section]` | Server statistics (`server`, `memory`, `persistence`, `keyspace`) | `INFO` / `INFO memory` | Bulk string with server metrics |
 | `CONFIG GET param` | Retrieves runtime configuration parameters (`maxmemory`, `maxmemory-policy`, `*`) | `CONFIG GET maxmemory` | RESP array with parameter and value |
 | `CONFIG SET param val` | Dynamically updates runtime configuration (`maxmemory`, `maxmemory-policy`) | `CONFIG SET maxmemory 256mb` | `+OK\r\n` |

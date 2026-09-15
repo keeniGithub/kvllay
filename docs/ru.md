@@ -190,6 +190,7 @@ flowchart TD
 | `SELECT index` | Выбор логической базы данных (поддерживается БД 0) | `SELECT 0` | `+OK\r\n` (или `-ERR DB index is out of range`) |
 | `FLUSHDB` / `FLUSHALL` | Полная очистка всех ключей и таймеров | `FLUSHDB` | `+OK\r\n` |
 | `COMMAND` / `COMMAND DOCS`| Хэндшейк совместимости с `redis-cli` | `COMMAND` | `*0\r\n` (пустой массив) |
+| `HELLO [2|3] [AUTH user password] [SETNAME name]` | Согласование RESP2/RESP3 | `HELLO 3` | RESP3-карта handshake (или RESP2-массив для `HELLO 2`) |
 | `INFO [section]` | Статистика сервера (`server`, `memory`, `persistence`, `keyspace`) | `INFO` / `INFO memory` | Bulk string со служебной информацией |
 | `CONFIG GET param` | Получение текущих параметров конфигурации (`maxmemory`, `maxmemory-policy`, `*`) | `CONFIG GET maxmemory` | Массив параметров и значений |
 | `CONFIG SET param val` | Динамическое изменение параметров (`maxmemory`, `maxmemory-policy`) на лету | `CONFIG SET maxmemory 256mb` | `+OK\r\n` |

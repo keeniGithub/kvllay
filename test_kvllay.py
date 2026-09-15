@@ -79,7 +79,14 @@ def test_kvllay(port=6389):
     assert res == "*0\r\n", f"COMMAND failed: {repr(res)}"
     print("[PASS] COMMAND (handshake)")
 
-    # Test 12: INFO
+    # Test 12: HELLO protocol negotiation
+    res = send_recv(s, "HELLO 2\r\n")
+    assert res.startswith("*14\r\n") and "$6\r\nserver\r\n" in res, f"HELLO 2 failed: {repr(res)}"
+    res = send_recv(s, "HELLO 3 SETNAME test-client\r\n")
+    assert res.startswith("%7\r\n") and "$6\r\nserver\r\n" in res, f"HELLO 3 failed: {repr(res)}"
+    print("[PASS] HELLO RESP2/RESP3 handshake")
+
+    # Test 13: INFO
     res = send_recv(s, "INFO\r\n")
     assert "kvllay_version:1.0.0" in res, f"INFO failed: {repr(res)}"
     print("[PASS] INFO")
@@ -1365,6 +1372,4 @@ if __name__ == "__main__":
     test_persistence(test_port)
     test_event_loop_and_high_concurrency(test_port)
     test_allocator_and_memory_optimization(test_port)
-
-
 
