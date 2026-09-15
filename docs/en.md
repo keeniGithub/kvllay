@@ -106,7 +106,7 @@ All commands are case-insensitive (`get`, `Get`, and `GET` are equivalent).
 
 | Command | Description | Example | Response |
 | :--- | :--- | :--- | :--- |
-| `SET key value` | Stores string value under key | `SET session "token123"` | `+OK\r\n` |
+| `SET key value [EX seconds|PX milliseconds] [NX|XX] [KEEPTTL]` | Stores a string, optionally with TTL and conditional/TTL-preserving semantics | `SET session "token123" EX 3600 NX` | `+OK\r\n` or `$-1\r\n` when `NX`/`XX` is not satisfied |
 | `GET key` | Retrieves value for given key | `GET session` | `"$8\r\ntoken123\r\n"` or `$-1\r\n` (null) |
 | `DEL key [key ...]` | Removes one or more keys | `DEL key1 key2` | `:2\r\n` (number of deleted keys) |
 | `EXISTS key [key ...]` | Checks existence of keys | `EXISTS key1 key2` | `:1\r\n` (number of existing keys) |

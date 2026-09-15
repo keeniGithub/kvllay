@@ -130,6 +130,11 @@ public:
         WrongType
     };
 
+    enum class SetStatus {
+        Applied,
+        NotApplied
+    };
+
     enum class ListPushStatus {
         Success,
         WrongType
@@ -393,14 +398,38 @@ public:
         return modify_int(key, delta, result_val, true);
     }
 
-    bool set(std::string_view key, std::string_view value) {
+    SetStatus set_with_options(std::string_view key, std::string_view value,
+                               uint64_t ttl_ms = 0, bool keep_ttl = false,
+                               bool nx = false, bool xx = false) {
         size_t idx = shard_index(key);
         auto& shard = shards_[idx];
+        uint64_t now_ms = current_time_ms();
         uint64_t now_sec = current_lru_clock();
         std::string k(key);
         {
             std::unique_lock<std::shared_mutex> lock(shard.mutex);
             auto it = shard.data.find(k);
+
+            // Expired entries must behave as absent for NX/XX and should not
+            // retain their memory until the active eviction pass runs.
+            if (it != shard.data.end() && it->second.expire_at != 0 && it->second.expire_at <= now_ms) {
+                sub_memory(estimate_entry_memory(k, it->second));
+                shard.data.erase(it);
+                shard.keys_with_ttl.erase(k);
+                it = shard.data.end();
+            }
+
+            if ((nx && it != shard.data.end()) || (xx && it == shard.data.end())) {
+                return SetStatus::NotApplied;
+            }
+
+            uint64_t expire_at = 0;
+            if (ttl_ms != 0) {
+                expire_at = now_ms + ttl_ms;
+            } else if (keep_ttl && it != shard.data.end()) {
+                expire_at = it->second.expire_at;
+            }
+
             if (it != shard.data.end()) {
                 size_t old_mem = estimate_entry_memory(it->first, it->second);
                 if (it->second.is_string()) {
@@ -408,7 +437,7 @@ public:
                 } else {
                     it->second.data.emplace<std::string>(value);
                 }
-                it->second.expire_at = 0;
+                it->second.expire_at = expire_at;
                 it->second.touch(now_sec);
                 size_t new_mem = estimate_entry_memory(it->first, it->second);
                 if (new_mem > old_mem) {
@@ -419,15 +448,21 @@ public:
             } else {
                 shard.data.emplace(std::piecewise_construct,
                                    std::forward_as_tuple(std::move(k)),
-                                   std::forward_as_tuple(std::string(value), 0, now_sec));
+                                   std::forward_as_tuple(std::string(value), expire_at, now_sec));
                 add_memory(estimate_string_memory(key, value));
             }
-            if (!shard.keys_with_ttl.empty()) {
+            if (expire_at != 0) {
+                shard.keys_with_ttl.insert(std::string(key));
+            } else {
                 shard.keys_with_ttl.erase(std::string(key));
             }
         }
         dirty_++;
-        return true;
+        return SetStatus::Applied;
+    }
+
+    bool set(std::string_view key, std::string_view value) {
+        return set_with_options(key, value) == SetStatus::Applied;
     }
 
     bool mset(const std::vector<std::pair<std::string, std::string>>& kvs) {

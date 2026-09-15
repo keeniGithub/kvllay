@@ -20,7 +20,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
 - **Commands**:
   - `AUTH [username] password`
   - `PING [message]`
-  - `SET key value`
+  - `SET key value [EX seconds|PX milliseconds] [NX|XX] [KEEPTTL]`
   - `GET key`
   - `MSET key value [key value ...]`
   - `MGET key [key ...]`

@@ -89,7 +89,7 @@
 - **Current Implemented Commands**:
   - `AUTH [username] password`: Authenticates connection. Accepts optional username for Redis 6+ compatibility. Returns `-WRONGPASS ...` on mismatch.
   - `PING [message]`: Returns `+PONG\r\n` or the message as bulk string.
-  - `SET key value`: Sets string value, returns `+OK\r\n`.
+  - `SET key value [EX seconds|PX milliseconds] [NX|XX] [KEEPTTL]`: Sets a string value with optional expiration, conditional creation/update, or TTL preservation. Returns `+OK\r\n`, or `$-1\r\n` when `NX`/`XX` is not satisfied.
   - `GET key`: Returns bulk string or null bulk string (`$-1\r\n`).
   - `DEL key [key ...]`: Deletes keys, returns integer count of removed keys.
   - `EXISTS key [key ...]`: Returns integer count of existing keys.

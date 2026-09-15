@@ -106,7 +106,7 @@ flowchart TD
 
 | Команда | Описание | Пример | Ответ |
 | :--- | :--- | :--- | :--- |
-| `SET key value` | Устанавливает строковое значение ключа | `SET session "token123"` | `+OK\r\n` |
+| `SET key value [EX seconds|PX milliseconds] [NX|XX] [KEEPTTL]` | Устанавливает строковое значение, TTL и условные опции | `SET session "token123" EX 3600 NX` | `+OK\r\n` или `$-1\r\n`, если условие `NX`/`XX` не выполнено |
 | `GET key` | Возвращает значение ключа | `GET session` | `"$8\r\ntoken123\r\n"` или `$-1\r\n` (null) |
 | `DEL key [key ...]` | Удаляет один или несколько ключей | `DEL key1 key2` | `:2\r\n` (число удаленных ключей) |
 | `EXISTS key [key ...]` | Проверяет существование ключей | `EXISTS key1 key2` | `:1\r\n` (число найденных ключей) |

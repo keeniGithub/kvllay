@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <chrono>
 #include <charconv>
+#include <limits>
 #include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
@@ -77,12 +78,7 @@ public:
             if (c0 == 'G' && c1 == 'E' && c2 == 'T') {
                 handle_get_sv(args, out);
             } else if (c0 == 'S' && c1 == 'E' && c2 == 'T') {
-                if (!store_.check_memory_and_evict()) {
-                    Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
-                } else {
-                    is_mutating = true;
-                    handle_set_sv(args, out);
-                }
+                is_mutating = handle_set_sv(args, out);
             } else if (c0 == 'D' && c1 == 'E' && c2 == 'L') {
                 is_mutating = true;
                 handle_del_sv(args, out);
@@ -312,13 +308,100 @@ private:
         }
     }
 
-    void handle_set_sv(const std::vector<std::string_view>& args, std::string& out) {
+    struct SetOptions {
+        uint64_t ttl_ms = 0;
+        bool has_expiry = false;
+        bool keep_ttl = false;
+        bool nx = false;
+        bool xx = false;
+    };
+
+    bool parse_set_options(const std::vector<std::string_view>& args, SetOptions& options, std::string& out) {
+        for (size_t i = 3; i < args.size(); ++i) {
+            if (iequals(args[i], "NX")) {
+                if (options.nx || options.xx) {
+                    Resp::append_error(out, "syntax error");
+                    return false;
+                }
+                options.nx = true;
+            } else if (iequals(args[i], "XX")) {
+                if (options.nx || options.xx) {
+                    Resp::append_error(out, "syntax error");
+                    return false;
+                }
+                options.xx = true;
+            } else if (iequals(args[i], "KEEPTTL")) {
+                if (options.keep_ttl) {
+                    Resp::append_error(out, "syntax error");
+                    return false;
+                }
+                options.keep_ttl = true;
+            } else if (iequals(args[i], "EX") || iequals(args[i], "PX")) {
+                if (options.has_expiry || i + 1 >= args.size()) {
+                    Resp::append_error(out, "syntax error");
+                    return false;
+                }
+
+                long long duration = 0;
+                auto [ptr, ec] = std::from_chars(args[i + 1].data(),
+                                                 args[i + 1].data() + args[i + 1].size(),
+                                                 duration);
+                if (ec != std::errc() || ptr != args[i + 1].data() + args[i + 1].size()) {
+                    Resp::append_error(out, "value is not an integer or out of range");
+                    return false;
+                }
+                if (duration <= 0) {
+                    Resp::append_error(out, "invalid expire time in 'set' command");
+                    return false;
+                }
+
+                uint64_t duration_ms = static_cast<uint64_t>(duration);
+                if (iequals(args[i], "EX")) {
+                    if (duration_ms > std::numeric_limits<uint64_t>::max() / 1000) {
+                        Resp::append_error(out, "value is not an integer or out of range");
+                        return false;
+                    }
+                    duration_ms *= 1000;
+                }
+                options.ttl_ms = duration_ms;
+                options.has_expiry = true;
+                ++i;
+            } else {
+                Resp::append_error(out, "syntax error");
+                return false;
+            }
+        }
+
+        if (options.keep_ttl && options.has_expiry) {
+            Resp::append_error(out, "syntax error");
+            return false;
+        }
+        return true;
+    }
+
+    bool handle_set_sv(const std::vector<std::string_view>& args, std::string& out) {
         if (args.size() < 3) {
             Resp::append_error(out, "wrong number of arguments for 'set' command");
-            return;
+            return false;
         }
-        store_.set(args[1], args[2]);
+
+        SetOptions options;
+        if (!parse_set_options(args, options, out)) {
+            return false;
+        }
+        if (!store_.check_memory_and_evict()) {
+            Resp::append_error(out, "OOM command not allowed when used memory > 'maxmemory'.");
+            return false;
+        }
+
+        auto status = store_.set_with_options(args[1], args[2], options.ttl_ms,
+                                              options.keep_ttl, options.nx, options.xx);
+        if (status == Store::SetStatus::NotApplied) {
+            Resp::append_null_bulk_string(out);
+            return false;
+        }
         Resp::append_ok(out);
+        return true;
     }
 
     void handle_get_sv(const std::vector<std::string_view>& args, std::string& out) {

@@ -14,6 +14,7 @@
 #include <condition_variable>
 #include <algorithm>
 #include <cstdint>
+#include <limits>
 #include <cstdio>
 #include <constants.hpp>
 #include <resp.hpp>
@@ -417,7 +418,57 @@ private:
         std::transform(cmd.begin(), cmd.end(), cmd.begin(), ::toupper);
 
         if (cmd == "SET" && args.size() >= 3) {
-            store.set(args[1], args[2]);
+            uint64_t ttl_ms = 0;
+            bool has_expiry = false;
+            bool keep_ttl = false;
+            bool nx = false;
+            bool xx = false;
+            bool valid = true;
+
+            for (size_t i = 3; i < args.size() && valid; ++i) {
+                std::string option = args[i];
+                std::transform(option.begin(), option.end(), option.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
+                if (option == "NX") {
+                    if (nx || xx) valid = false;
+                    nx = true;
+                } else if (option == "XX") {
+                    if (nx || xx) valid = false;
+                    xx = true;
+                } else if (option == "KEEPTTL") {
+                    if (keep_ttl) valid = false;
+                    keep_ttl = true;
+                } else if (option == "EX" || option == "PX") {
+                    if (has_expiry || i + 1 >= args.size()) {
+                        valid = false;
+                        break;
+                    }
+                    try {
+                        long long duration = std::stoll(args[++i]);
+                        if (duration <= 0) {
+                            valid = false;
+                            break;
+                        }
+                        ttl_ms = static_cast<uint64_t>(duration);
+                        if (option == "EX") {
+                            if (ttl_ms > std::numeric_limits<uint64_t>::max() / 1000) {
+                                valid = false;
+                                break;
+                            }
+                            ttl_ms *= 1000;
+                        }
+                        has_expiry = true;
+                    } catch (...) {
+                        valid = false;
+                    }
+                } else {
+                    valid = false;
+                }
+            }
+
+            if (valid && !(keep_ttl && has_expiry)) {
+                store.set_with_options(args[1], args[2], ttl_ms, keep_ttl, nx, xx);
+            }
         } else if (cmd == "SETEX" && args.size() >= 4) {
             try {
                 long long sec = std::stoll(args[2]);
