@@ -183,6 +183,7 @@ flowchart TD
 | Команда | Описание | Пример | Ответ |
 | :--- | :--- | :--- | :--- |
 | `DBSIZE` | Возвращает общее количество активных ключей | `DBSIZE` | `:42\r\n` |
+| `SELECT index` | Выбор логической базы данных (поддерживается БД 0) | `SELECT 0` | `+OK\r\n` (или `-ERR DB index is out of range`) |
 | `FLUSHDB` / `FLUSHALL` | Полная очистка всех ключей и таймеров | `FLUSHDB` | `+OK\r\n` |
 | `COMMAND` / `COMMAND DOCS`| Хэндшейк совместимости с `redis-cli` | `COMMAND` | `*0\r\n` (пустой массив) |
 | `INFO [section]` | Статистика сервера (`server`, `memory`, `persistence`, `keyspace`) | `INFO` / `INFO memory` | Bulk string со служебной информацией |

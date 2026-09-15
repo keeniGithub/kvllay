@@ -84,7 +84,26 @@ def test_kvllay(port=6389):
     assert "kvllay_version:1.0.0" in res, f"INFO failed: {repr(res)}"
     print("[PASS] INFO")
 
-    # Test 13: QUIT
+    # Test 13: SELECT
+    res = send_recv(s, "SELECT 0\r\n")
+    assert res == "+OK\r\n", f"SELECT 0 failed: {repr(res)}"
+    res = send_recv(s, "SELECT +0\r\n")
+    assert res == "+OK\r\n", f"SELECT +0 failed: {repr(res)}"
+    res = send_recv(s, "*2\r\n$6\r\nSELECT\r\n$1\r\n0\r\n")
+    assert res == "+OK\r\n", f"RESP SELECT 0 failed: {repr(res)}"
+    res = send_recv(s, "SELECT 1\r\n")
+    assert res == "-ERR DB index is out of range\r\n", f"SELECT 1 failed: {repr(res)}"
+    res = send_recv(s, "SELECT -1\r\n")
+    assert res == "-ERR DB index is out of range\r\n", f"SELECT -1 failed: {repr(res)}"
+    res = send_recv(s, "SELECT invalid\r\n")
+    assert res == "-ERR value is not an integer or out of range\r\n", f"SELECT invalid failed: {repr(res)}"
+    res = send_recv(s, "SELECT\r\n")
+    assert res == "-ERR wrong number of arguments for 'select' command\r\n", f"SELECT no args failed: {repr(res)}"
+    res = send_recv(s, "SELECT 0 1\r\n")
+    assert res == "-ERR wrong number of arguments for 'select' command\r\n", f"SELECT too many args failed: {repr(res)}"
+    print("[PASS] SELECT (db 0, out of range db > 0, negative db, invalid args)")
+
+    # Test 14: QUIT
     res = send_recv(s, "QUIT\r\n")
     assert res == "+OK\r\n", f"QUIT failed: {repr(res)}"
     rem = s.recv(1024)

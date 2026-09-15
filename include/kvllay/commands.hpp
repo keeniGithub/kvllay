@@ -205,6 +205,8 @@ public:
                 handle_config_sv(args, out);
             } else if (iequals(cmd, "BGSAVE")) {
                 handle_bgsave_sv(args, out);
+            } else if (iequals(cmd, "SELECT")) {
+                handle_select_sv(args, out);
             } else {
                 Resp::append_error(out, "unknown command '" + std::string(cmd) + "'");
             }
@@ -384,6 +386,28 @@ private:
 
     void handle_command_sv(const std::vector<std::string_view>&, std::string& out) {
         Resp::append_empty_array(out);
+    }
+
+    void handle_select_sv(const std::vector<std::string_view>& args, std::string& out) {
+        if (args.size() != 2) {
+            Resp::append_error(out, "wrong number of arguments for 'select' command");
+            return;
+        }
+        std::string_view idx_sv = args[1];
+        if (!idx_sv.empty() && idx_sv[0] == '+') {
+            idx_sv.remove_prefix(1);
+        }
+        long long index = 0;
+        auto [ptr, ec] = std::from_chars(idx_sv.data(), idx_sv.data() + idx_sv.size(), index);
+        if (ec != std::errc() || ptr != idx_sv.data() + idx_sv.size() || idx_sv.empty()) {
+            Resp::append_error(out, "value is not an integer or out of range");
+            return;
+        }
+        if (index != 0) {
+            Resp::append_error(out, "DB index is out of range");
+            return;
+        }
+        Resp::append_ok(out);
     }
 
     void handle_config_sv(const std::vector<std::string_view>& args, std::string& out) {

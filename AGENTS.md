@@ -119,6 +119,7 @@
   - `LRANGE key start stop`: Returns elements from start to stop (supports negative indexes).
   - `LINDEX key index`: Returns element by 0-based or negative index.
   - `TYPE key`: Returns type of key (`string`, `list`, or `none`).
+  - `SELECT index`: Selects logical database (supports default DB 0, returns `-ERR DB index is out of range` for out-of-range indexes).
   - `CONFIG GET parameter`: Retrieves configuration parameter (`maxmemory`, `maxmemory-policy`, or `*`).
   - `CONFIG SET parameter value`: Dynamically sets configuration (`maxmemory`, `maxmemory-policy`).
   - `SAVE`: Synchronously dumps memory state to binary snapshot file (`dump.kvl`).

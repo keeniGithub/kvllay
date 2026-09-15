@@ -39,6 +39,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `LPOP key [count]` / `RPOP key [count]`
   - `LLEN key` / `LRANGE key start stop` / `LINDEX key index`
   - `TYPE key`
+  - `SELECT index`
   - `SAVE` (synchronous snapshot)
   - `BGSAVE` (background snapshot without `fork()`)
   - `LASTSAVE` (UNIX epoch timestamp of last save)

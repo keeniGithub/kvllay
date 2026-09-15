@@ -183,6 +183,7 @@ Lists in `kvllay` are implemented using a cache-friendly double-ended queue buff
 | Command | Description | Example | Response |
 | :--- | :--- | :--- | :--- |
 | `DBSIZE` | Total count of active keys | `DBSIZE` | `:42\r\n` |
+| `SELECT index` | Selects logical database (DB 0 supported) | `SELECT 0` | `+OK\r\n` (or `-ERR DB index is out of range`) |
 | `FLUSHDB` / `FLUSHALL` | Clears all keys and timers | `FLUSHDB` | `+OK\r\n` |
 | `COMMAND` / `COMMAND DOCS`| Handshake compatibility for `redis-cli` | `COMMAND` | `*0\r\n` (empty array) |
 | `INFO [section]` | Server statistics (`server`, `memory`, `persistence`, `keyspace`) | `INFO` / `INFO memory` | Bulk string with server metrics |
