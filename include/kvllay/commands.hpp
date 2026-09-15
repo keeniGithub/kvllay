@@ -651,11 +651,11 @@ private:
     }
 
     void handle_keys_sv(const std::vector<std::string_view>& args, std::string& out) {
-        std::string pattern = "*";
-        if (args.size() >= 2) {
-            pattern = std::string(args[1]);
+        if (args.size() != 2) {
+            Resp::append_error(out, "wrong number of arguments for 'keys' command");
+            return;
         }
-        auto matched = store_.keys(pattern);
+        auto matched = store_.keys(std::string(args[1]));
         Resp::append_array_header(out, matched.size());
         for (const auto& k : matched) {
             Resp::append_bulk_string(out, k);

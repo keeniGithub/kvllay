@@ -55,6 +55,11 @@ def test_kvllay(port=6389):
     assert "mykey" in res and "user" in res
     print("[PASS] KEYS *")
 
+    # KEYS requires exactly one pattern argument, like Redis.
+    res = send_recv(s, "KEYS\r\n")
+    assert res == "-ERR wrong number of arguments for 'keys' command\r\n", f"KEYS without args failed: {repr(res)}"
+    print("[PASS] KEYS without arguments")
+
     # Test 8: DBSIZE
     res = send_recv(s, "DBSIZE\r\n")
     assert res == ":2\r\n", f"DBSIZE failed: {repr(res)}"
