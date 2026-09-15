@@ -72,12 +72,6 @@ public:
 
         std::string_view cmd = args[0];
 
-        // Keep the registry in sync after every command. The session itself remains
-        // owned by the connection, so SETNAME/SETINFO changes are immediately local.
-        if (client.id != 0) {
-            register_client(client);
-        }
-
         if (iequals(cmd, "QUIT")) {
             Resp::append_ok(out);
             should_close = true;
@@ -286,10 +280,6 @@ public:
         }
         }
 
-        if (client.id != 0) {
-            register_client(client);
-        }
-
         if (is_mutating && aof_mgr_ && aof_mgr_->is_enabled()) {
             std::string_view written(out.data() + pre_out_len, out.size() - pre_out_len);
             if (written.rfind("-ERR", 0) != 0 && written.rfind("-WRONG", 0) != 0 && written.rfind("-OOM", 0) != 0) {
@@ -337,6 +327,15 @@ private:
             return;
         }
 
+        if (iequals(args[1], "ID")) {
+            if (args.size() != 2) {
+                Resp::append_error(out, "wrong number of arguments for 'client|id' command");
+                return;
+            }
+            Resp::append_integer(out, static_cast<long long>(client.id));
+            return;
+        }
+
         if (iequals(args[1], "SETNAME")) {
             if (args.size() != 3) {
                 Resp::append_error(out, "wrong number of arguments for 'client|setname' command");
@@ -346,8 +345,15 @@ private:
                 Resp::append_error(out, "client name cannot be longer than 512 characters");
                 return;
             }
+            if (args[2].find_first_of(" \t\r\n") != std::string_view::npos) {
+                Resp::append_error(out, "client name cannot contain spaces, newlines or special characters");
+                return;
+            }
             client.name.assign(args[2]);
             client.name_set = true;
+            if (client.id != 0) {
+                register_client(client);
+            }
             Resp::append_ok(out);
             return;
         }
@@ -372,6 +378,9 @@ private:
             else {
                 Resp::append_error(out, "unknown option or number of arguments for CLIENT SETINFO");
                 return;
+            }
+            if (client.id != 0) {
+                register_client(client);
             }
             Resp::append_ok(out);
             return;
@@ -492,8 +501,15 @@ private:
                     Resp::append_error(out, "syntax error");
                     return;
                 }
+                if (args[i + 1].find_first_of(" \t\r\n") != std::string_view::npos) {
+                    Resp::append_error(out, "syntax error");
+                    return;
+                }
                 client.name.assign(args[i + 1]);
                 client.name_set = true;
+                if (client.id != 0) {
+                    register_client(client);
+                }
                 i += 2;
             } else {
                 Resp::append_error(out, "syntax error");
@@ -554,11 +570,15 @@ private:
                     return false;
                 }
 
+                std::string_view dur_sv = args[i + 1];
+                if (!dur_sv.empty() && dur_sv[0] == '+') {
+                    dur_sv.remove_prefix(1);
+                }
                 long long duration = 0;
-                auto [ptr, ec] = std::from_chars(args[i + 1].data(),
-                                                 args[i + 1].data() + args[i + 1].size(),
+                auto [ptr, ec] = std::from_chars(dur_sv.data(),
+                                                 dur_sv.data() + dur_sv.size(),
                                                  duration);
-                if (ec != std::errc() || ptr != args[i + 1].data() + args[i + 1].size()) {
+                if (ec != std::errc() || ptr != dur_sv.data() + dur_sv.size() || dur_sv.empty()) {
                     Resp::append_error(out, "value is not an integer or out of range");
                     return false;
                 }

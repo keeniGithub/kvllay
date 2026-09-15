@@ -95,6 +95,8 @@ inline bool set_socket_nonblocking(socket_t fd) {
 #endif
 }
 
+inline std::atomic<uint64_t> g_next_client_id{1};
+
 struct Connection {
     socket_t fd = INVALID_SOCKET;
     bool authenticated = false;
@@ -264,6 +266,7 @@ private:
 
         for (const auto& item : to_add) {
             set_socket_nonblocking(item.fd);
+            uint64_t client_id = g_next_client_id.fetch_add(1, std::memory_order_relaxed);
 #ifndef _WIN32
             epoll_event ev{};
             ev.events = EPOLLIN | EPOLLRDHUP;
@@ -272,7 +275,7 @@ private:
                 Connection conn;
                 conn.fd = item.fd;
                 conn.authenticated = item.authenticated;
-                conn.client.id = static_cast<uint64_t>(item.fd);
+                conn.client.id = client_id;
                 conn.read_buf.reserve(constants::CLIENT_BUFFER_SIZE);
                 connections_.emplace(item.fd, std::move(conn));
                 command_handler_.register_client(connections_.at(item.fd).client);
@@ -283,7 +286,7 @@ private:
             Connection conn;
             conn.fd = item.fd;
             conn.authenticated = item.authenticated;
-            conn.client.id = static_cast<uint64_t>(item.fd);
+            conn.client.id = client_id;
             conn.read_buf.reserve(constants::CLIENT_BUFFER_SIZE);
             connections_.emplace(item.fd, std::move(conn));
             command_handler_.register_client(connections_.at(item.fd).client);
@@ -366,6 +369,14 @@ private:
 
         const std::string_view command = args[0];
 
+        if (is_command(command, "QUIT")) {
+            Resp::append_ok(out);
+            conn.should_close = true;
+            conn.in_transaction = false;
+            conn.transaction_queue.clear();
+            return;
+        }
+
         // Authentication is checked before transaction handling. AUTH and HELLO
         // must remain usable before MULTI, while all other commands are rejected.
         if (!password_.empty() && !conn.authenticated &&
@@ -409,12 +420,12 @@ private:
                 conn.in_transaction = false;
                 Resp::append_array_header(out, conn.transaction_queue.size());
                 for (const auto& queued : conn.transaction_queue) {
-                    std::vector<std::string_view> queued_views;
-                    queued_views.reserve(queued.size());
+                    scratch_args_.clear();
+                    scratch_args_.reserve(queued.size());
                     for (const auto& argument : queued) {
-                        queued_views.emplace_back(argument);
+                        scratch_args_.emplace_back(argument);
                     }
-                    command_handler_.dispatch(queued_views, out, conn.authenticated,
+                    command_handler_.dispatch(scratch_args_, out, conn.authenticated,
                                               password_, conn.should_close, conn.client);
                 }
                 conn.transaction_queue.clear();
@@ -423,6 +434,11 @@ private:
         }
 
         if (conn.in_transaction) {
+            constexpr size_t MAX_QUEUED_COMMANDS = 32768;
+            if (conn.transaction_queue.size() >= MAX_QUEUED_COMMANDS) {
+                Resp::append_error(out, "ERR transaction queue limit reached");
+                return;
+            }
             std::vector<std::string> queued;
             queued.reserve(args.size());
             for (const auto argument : args) {

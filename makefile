@@ -90,6 +90,9 @@ run:
 test:
 	python3 test_kvllay.py 6389
 
+test-redis-py:
+	python3 test_redis_py.py 6389
+
 clean:
 	$(REMOVE)
 

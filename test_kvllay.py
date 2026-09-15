@@ -115,6 +115,29 @@ def test_kvllay(port=6389):
     assert res == "-ERR wrong number of arguments for 'select' command\r\n", f"SELECT too many args failed: {repr(res)}"
     print("[PASS] SELECT (db 0, out of range db > 0, negative db, invalid args)")
 
+    # Test CLIENT commands
+    res = send_recv(s, "CLIENT ID\r\n")
+    assert res.startswith(":") and int(res[1:].strip()) > 0, f"CLIENT ID failed: {repr(res)}"
+    assert send_recv(s, "CLIENT GETNAME\r\n") == "$11\r\ntest-client\r\n"
+    s_fresh = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s_fresh.connect(("127.0.0.1", port))
+    assert send_recv(s_fresh, "CLIENT GETNAME\r\n") == "$-1\r\n"
+    s_fresh.close()
+    assert send_recv(s, "CLIENT SETNAME valid-name\r\n") == "+OK\r\n"
+    assert send_recv(s, "CLIENT GETNAME\r\n") == "$10\r\nvalid-name\r\n"
+    res = send_recv(s, "CLIENT SETNAME 'invalid name'\r\n")
+    assert res == "-ERR client name cannot contain spaces, newlines or special characters\r\n"
+    assert send_recv(s, "CLIENT SETINFO LIB-NAME test-lib\r\n") == "+OK\r\n"
+    assert send_recv(s, "CLIENT SETINFO LIB-VER 1.2.3\r\n") == "+OK\r\n"
+    res_list = send_recv(s, "CLIENT LIST\r\n")
+    assert "name=valid-name" in res_list and "lib-name=test-lib" in res_list and "lib-ver=1.2.3" in res_list
+    print("[PASS] CLIENT (ID, SETNAME, GETNAME, SETINFO, LIST, whitespace validation)")
+
+    # Test SET options with leading plus
+    assert send_recv(s, "SET set_plus_k val EX +10\r\n") == "+OK\r\n"
+    assert send_recv(s, "GET set_plus_k\r\n") == "$3\r\nval\r\n"
+    print("[PASS] SET with leading plus duration (EX +10)")
+
     # Test 14: QUIT
     res = send_recv(s, "QUIT\r\n")
     assert res == "+OK\r\n", f"QUIT failed: {repr(res)}"
@@ -1312,7 +1335,15 @@ def test_transactions_and_pipelines(port=6389):
     assert send_recv(s, "EXEC\r\n") == "-ERR EXEC without MULTI\r\n"
     assert send_recv(s, "DISCARD\r\n") == "-ERR DISCARD without MULTI\r\n"
     s.close()
-    print("[PASS] MULTI/EXEC/DISCARD and ordinary pipelining")
+
+    # QUIT inside MULTI
+    s_quit = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s_quit.connect(("127.0.0.1", port))
+    res = send_recv(s_quit, "MULTI\r\nSET qk qv\r\nQUIT\r\n")
+    assert res == "+OK\r\n+QUEUED\r\n+OK\r\n", f"QUIT in MULTI failed: {res!r}"
+    assert len(s_quit.recv(1024)) == 0, "Expected socket close after QUIT in MULTI"
+    s_quit.close()
+    print("[PASS] MULTI/EXEC/DISCARD, pipeline, and QUIT in MULTI")
 
 def test_allocator_and_memory_optimization(port=6389):
     print(f"\n--- Testing Memory Manager & Allocator Optimization (Port {port}) ---")

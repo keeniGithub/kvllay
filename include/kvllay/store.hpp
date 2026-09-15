@@ -429,6 +429,7 @@ public:
             } else if (keep_ttl && it != shard.data.end()) {
                 expire_at = it->second.expire_at;
             }
+            bool had_ttl = (it != shard.data.end() && it->second.expire_at != 0);
 
             if (it != shard.data.end()) {
                 size_t old_mem = estimate_entry_memory(it->first, it->second);
@@ -453,7 +454,7 @@ public:
             }
             if (expire_at != 0) {
                 shard.keys_with_ttl.insert(std::string(key));
-            } else {
+            } else if (had_ttl && !shard.keys_with_ttl.empty()) {
                 shard.keys_with_ttl.erase(std::string(key));
             }
         }
