@@ -10,6 +10,8 @@
 #include <chrono>
 #include <charconv>
 #include <limits>
+#include <mutex>
+#include <unordered_map>
 #include <constants.hpp>
 #include <resp.hpp>
 #include <store.hpp>
@@ -24,6 +26,14 @@ struct CommandResult {
     bool should_close = false;
 };
 
+struct ClientSession {
+    uint64_t id = 0;
+    bool name_set = false;
+    std::string name;
+    std::string lib_name;
+    std::string lib_ver;
+};
+
 class CommandHandler {
 public:
     explicit CommandHandler(Store& store, SnapshotManager* snapshot_mgr = nullptr, AofManager* aof_mgr = nullptr)
@@ -32,6 +42,16 @@ public:
 
     void set_snapshot_manager(SnapshotManager* mgr) { snapshot_mgr_ = mgr; }
     void set_aof_manager(AofManager* mgr) { aof_mgr_ = mgr; }
+
+    void register_client(const ClientSession& client) {
+        std::lock_guard<std::mutex> lock(clients_mutex_);
+        clients_[client.id] = client;
+    }
+
+    void unregister_client(uint64_t id) {
+        std::lock_guard<std::mutex> lock(clients_mutex_);
+        clients_.erase(id);
+    }
 
     static inline bool iequals(std::string_view a, std::string_view b) noexcept {
         if (a.size() != b.size()) return false;
@@ -43,13 +63,19 @@ public:
         return true;
     }
 
-    void dispatch(const std::vector<std::string_view>& args, std::string& out, bool& authenticated, const std::string& server_password, bool& should_close) {
+    void dispatch(const std::vector<std::string_view>& args, std::string& out, bool& authenticated, const std::string& server_password, bool& should_close, ClientSession& client) {
         if (args.empty()) {
             Resp::append_error(out, "empty command");
             return;
         }
 
         std::string_view cmd = args[0];
+
+        // Keep the registry in sync after every command. The session itself remains
+        // owned by the connection, so SETNAME/SETINFO changes are immediately local.
+        if (client.id != 0) {
+            register_client(client);
+        }
 
         if (iequals(cmd, "QUIT")) {
             Resp::append_ok(out);
@@ -199,6 +225,8 @@ public:
                 handle_dbsize_sv(args, out);
             } else if (iequals(cmd, "CONFIG")) {
                 handle_config_sv(args, out);
+            } else if (iequals(cmd, "CLIENT")) {
+                handle_client_sv(args, client, out);
             } else if (iequals(cmd, "BGSAVE")) {
                 handle_bgsave_sv(args, out);
             } else if (iequals(cmd, "SELECT")) {
@@ -250,12 +278,21 @@ public:
         }
         }
 
+        if (client.id != 0) {
+            register_client(client);
+        }
+
         if (is_mutating && aof_mgr_ && aof_mgr_->is_enabled()) {
             std::string_view written(out.data() + pre_out_len, out.size() - pre_out_len);
             if (written.rfind("-ERR", 0) != 0 && written.rfind("-WRONG", 0) != 0 && written.rfind("-OOM", 0) != 0) {
                 aof_mgr_->append(args);
             }
         }
+    }
+
+    void dispatch(const std::vector<std::string_view>& args, std::string& out, bool& authenticated, const std::string& server_password, bool& should_close) {
+        ClientSession client;
+        dispatch(args, out, authenticated, server_password, should_close, client);
     }
 
     CommandResult dispatch(const std::vector<std::string>& args, bool& authenticated, const std::string& server_password) {
@@ -275,6 +312,85 @@ private:
     SnapshotManager* snapshot_mgr_;
     AofManager* aof_mgr_;
     std::chrono::steady_clock::time_point start_time_;
+    mutable std::mutex clients_mutex_;
+    std::unordered_map<uint64_t, ClientSession> clients_;
+
+    std::vector<ClientSession> client_snapshot() const {
+        std::lock_guard<std::mutex> lock(clients_mutex_);
+        std::vector<ClientSession> result;
+        result.reserve(clients_.size());
+        for (const auto& entry : clients_) result.push_back(entry.second);
+        return result;
+    }
+
+    void handle_client_sv(const std::vector<std::string_view>& args, ClientSession& client, std::string& out) {
+        if (args.size() < 2) {
+            Resp::append_error(out, "wrong number of arguments for 'client' command");
+            return;
+        }
+
+        if (iequals(args[1], "SETNAME")) {
+            if (args.size() != 3) {
+                Resp::append_error(out, "wrong number of arguments for 'client|setname' command");
+                return;
+            }
+            if (args[2].size() > 512) {
+                Resp::append_error(out, "client name cannot be longer than 512 characters");
+                return;
+            }
+            client.name.assign(args[2]);
+            client.name_set = true;
+            Resp::append_ok(out);
+            return;
+        }
+
+        if (iequals(args[1], "GETNAME")) {
+            if (args.size() != 2) {
+                Resp::append_error(out, "wrong number of arguments for 'client|getname' command");
+                return;
+            }
+            if (!client.name_set) Resp::append_null_bulk_string(out);
+            else Resp::append_bulk_string(out, client.name);
+            return;
+        }
+
+        if (iequals(args[1], "SETINFO")) {
+            if (args.size() != 4) {
+                Resp::append_error(out, "wrong number of arguments for 'client|setinfo' command");
+                return;
+            }
+            if (iequals(args[2], "LIB-NAME")) client.lib_name.assign(args[3]);
+            else if (iequals(args[2], "LIB-VER")) client.lib_ver.assign(args[3]);
+            else {
+                Resp::append_error(out, "unknown option or number of arguments for CLIENT SETINFO");
+                return;
+            }
+            Resp::append_ok(out);
+            return;
+        }
+
+        if (iequals(args[1], "LIST")) {
+            if (args.size() != 2) {
+                Resp::append_error(out, "wrong number of arguments for 'client|list' command");
+                return;
+            }
+            auto clients = client_snapshot();
+            // A direct command invocation (without a live socket) still gets a
+            // useful single-client response.
+            if (client.id != 0 && clients.empty()) clients.push_back(client);
+            std::string body;
+            for (const auto& item : clients) {
+                body += "id=" + std::to_string(item.id);
+                body += " addr=127.0.0.1:0 fd=" + std::to_string(item.id);
+                body += " name=" + (item.name.empty() ? std::string("") : item.name);
+                body += " db=0 flags=N lib-name=" + item.lib_name + " lib-ver=" + item.lib_ver + "\r\n";
+            }
+            Resp::append_bulk_string(out, body);
+            return;
+        }
+
+        Resp::append_error(out, "unknown subcommand or wrong number of arguments for 'client'");
+    }
 
     void handle_auth_sv(const std::vector<std::string_view>& args, bool& authenticated, const std::string& server_password, std::string& out) {
         if (args.size() < 2 || args.size() > 3) {

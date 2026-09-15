@@ -19,6 +19,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
 - **Network Configuration**: bind to any network interface (`0.0.0.0` for network access, `127.0.0.1` for local access only).
 - **Commands**:
   - `AUTH [username] password`
+  - `CLIENT SETINFO LIB-NAME|LIB-VER value` / `CLIENT SETNAME name` / `CLIENT GETNAME` / `CLIENT LIST`
   - `PING [message]`
   - `SET key value [EX seconds|PX milliseconds] [NX|XX] [KEEPTTL]`
   - `GET key`

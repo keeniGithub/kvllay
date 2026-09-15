@@ -98,6 +98,10 @@ All commands are case-insensitive (`get`, `Get`, and `GET` are equivalent).
 | Command | Description | Example | Response |
 | :--- | :--- | :--- | :--- |
 | `AUTH [user] password` | Authenticates client connection | `AUTH mypass` | `+OK\r\n` or `-WRONGPASS ...` |
+| `CLIENT SETINFO LIB-NAME|LIB-VER value` | Stores client library metadata | `CLIENT SETINFO LIB-NAME redis-py` | `+OK\r\n` |
+| `CLIENT SETNAME name` | Sets the name of the current connection; an empty name is allowed | `CLIENT SETNAME worker-1` | `+OK\r\n` |
+| `CLIENT GETNAME` | Returns the name of the current connection | `CLIENT GETNAME` | Bulk string or `$-1\r\n` when unset |
+| `CLIENT LIST` | Returns active TCP connections and their metadata | `CLIENT LIST` | Bulk string with `id`, `addr`, `name`, `lib-name`, and `lib-ver` fields |
 | `PING [message]` | Checks connection liveness | `PING` / `PING "hello"` | `+PONG\r\n` / `"$5\r\nhello\r\n"` |
 | `ECHO message` | Returns transmitted string | `ECHO "hi"` | `"$2\r\nhi\r\n"` |
 | `QUIT` | Gracefully closes connection | `QUIT` | `+OK\r\n` followed by socket close |

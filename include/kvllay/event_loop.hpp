@@ -98,6 +98,7 @@ inline bool set_socket_nonblocking(socket_t fd) {
 struct Connection {
     socket_t fd = INVALID_SOCKET;
     bool authenticated = false;
+    ClientSession client;
     std::string read_buf;
     size_t read_offset = 0;
     std::string write_buf;
@@ -188,6 +189,7 @@ public:
 #endif
 
         for (auto& pair : connections_) {
+            command_handler_.unregister_client(pair.second.client.id);
             CLOSE_SOCKET(pair.first);
         }
         connections_.clear();
@@ -268,8 +270,10 @@ private:
                 Connection conn;
                 conn.fd = item.fd;
                 conn.authenticated = item.authenticated;
+                conn.client.id = static_cast<uint64_t>(item.fd);
                 conn.read_buf.reserve(constants::CLIENT_BUFFER_SIZE);
                 connections_.emplace(item.fd, std::move(conn));
+                command_handler_.register_client(connections_.at(item.fd).client);
             } else {
                 CLOSE_SOCKET(item.fd);
             }
@@ -277,8 +281,10 @@ private:
             Connection conn;
             conn.fd = item.fd;
             conn.authenticated = item.authenticated;
+            conn.client.id = static_cast<uint64_t>(item.fd);
             conn.read_buf.reserve(constants::CLIENT_BUFFER_SIZE);
             connections_.emplace(item.fd, std::move(conn));
+            command_handler_.register_client(connections_.at(item.fd).client);
 #endif
         }
     }
@@ -307,6 +313,10 @@ private:
 #ifndef _WIN32
         epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr);
 #endif
+        auto it = connections_.find(fd);
+        if (it != connections_.end()) {
+            command_handler_.unregister_client(it->second.client.id);
+        }
         CLOSE_SOCKET(fd);
         connections_.erase(fd);
     }
@@ -376,7 +386,7 @@ private:
             ParseStatus status = Resp::parse_command(sv, scratch_args_, consumed, scratch_unescape_buf_);
             if (status == ParseStatus::Success) {
                 conn.read_offset += consumed;
-                command_handler_.dispatch(scratch_args_, scratch_out_batch_, conn.authenticated, password_, conn.should_close);
+                command_handler_.dispatch(scratch_args_, scratch_out_batch_, conn.authenticated, password_, conn.should_close, conn.client);
                 if (conn.should_close) {
                     break;
                 }

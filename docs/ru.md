@@ -98,6 +98,10 @@ flowchart TD
 | Команда | Описание | Пример | Ответ |
 | :--- | :--- | :--- | :--- |
 | `AUTH [user] password` | Авторизация клиента на сервере | `AUTH mypass` | `+OK\r\n` или `-WRONGPASS ...` |
+| `CLIENT SETINFO LIB-NAME|LIB-VER value` | Сохраняет информацию о библиотеке клиента | `CLIENT SETINFO LIB-NAME redis-py` | `+OK\r\n` |
+| `CLIENT SETNAME name` | Устанавливает имя текущего соединения; допускается пустое имя | `CLIENT SETNAME worker-1` | `+OK\r\n` |
+| `CLIENT GETNAME` | Возвращает имя текущего соединения | `CLIENT GETNAME` | Bulk string или `$-1\r\n`, если имя не задано |
+| `CLIENT LIST` | Возвращает список активных TCP-соединений и их метаданные | `CLIENT LIST` | Bulk string со строками `id`, `addr`, `name`, `lib-name`, `lib-ver` |
 | `PING [message]` | Проверка соединения | `PING` / `PING "hello"` | `+PONG\r\n` / `"$5\r\nhello\r\n"` |
 | `ECHO message` | Возврат переданного сообщения | `ECHO "hi"` | `"$2\r\nhi\r\n"` |
 | `QUIT` | Корректное закрытие соединения | `QUIT` | `+OK\r\n` и закрытие сокета |
