@@ -104,6 +104,8 @@ struct Connection {
     std::string write_buf;
     size_t write_offset = 0;
     bool should_close = false;
+    bool in_transaction = false;
+    std::vector<std::vector<std::string>> transaction_queue;
 };
 
 class WorkerEventLoop {
@@ -350,6 +352,91 @@ private:
         return true;
     }
 
+    static bool is_command(std::string_view command, std::string_view expected) {
+        return CommandHandler::iequals(command, expected);
+    }
+
+    void dispatch_connection_command(Connection& conn,
+                                     const std::vector<std::string_view>& args,
+                                     std::string& out) {
+        if (args.empty()) {
+            Resp::append_error(out, "empty command");
+            return;
+        }
+
+        const std::string_view command = args[0];
+
+        // Authentication is checked before transaction handling. AUTH and HELLO
+        // must remain usable before MULTI, while all other commands are rejected.
+        if (!password_.empty() && !conn.authenticated &&
+            !is_command(command, "AUTH") && !is_command(command, "HELLO")) {
+            Resp::append_error(out, "NOAUTH Authentication required.");
+            return;
+        }
+
+        if (is_command(command, "MULTI")) {
+            if (args.size() != 1) {
+                Resp::append_error(out, "wrong number of arguments for 'multi' command");
+            } else if (conn.in_transaction) {
+                Resp::append_error(out, "MULTI calls can not be nested");
+            } else {
+                conn.in_transaction = true;
+                conn.transaction_queue.clear();
+                Resp::append_ok(out);
+            }
+            return;
+        }
+
+        if (is_command(command, "DISCARD")) {
+            if (args.size() != 1) {
+                Resp::append_error(out, "wrong number of arguments for 'discard' command");
+            } else if (!conn.in_transaction) {
+                Resp::append_error(out, "DISCARD without MULTI");
+            } else {
+                conn.in_transaction = false;
+                conn.transaction_queue.clear();
+                Resp::append_ok(out);
+            }
+            return;
+        }
+
+        if (is_command(command, "EXEC")) {
+            if (args.size() != 1) {
+                Resp::append_error(out, "wrong number of arguments for 'exec' command");
+            } else if (!conn.in_transaction) {
+                Resp::append_error(out, "EXEC without MULTI");
+            } else {
+                conn.in_transaction = false;
+                Resp::append_array_header(out, conn.transaction_queue.size());
+                for (const auto& queued : conn.transaction_queue) {
+                    std::vector<std::string_view> queued_views;
+                    queued_views.reserve(queued.size());
+                    for (const auto& argument : queued) {
+                        queued_views.emplace_back(argument);
+                    }
+                    command_handler_.dispatch(queued_views, out, conn.authenticated,
+                                              password_, conn.should_close, conn.client);
+                }
+                conn.transaction_queue.clear();
+            }
+            return;
+        }
+
+        if (conn.in_transaction) {
+            std::vector<std::string> queued;
+            queued.reserve(args.size());
+            for (const auto argument : args) {
+                queued.emplace_back(argument);
+            }
+            conn.transaction_queue.emplace_back(std::move(queued));
+            Resp::append_simple_string(out, "QUEUED");
+            return;
+        }
+
+        command_handler_.dispatch(args, out, conn.authenticated, password_,
+                                   conn.should_close, conn.client);
+    }
+
     bool handle_read(Connection& conn) {
         constexpr size_t READ_CHUNK = 8192;
         char buf[READ_CHUNK];
@@ -386,7 +473,7 @@ private:
             ParseStatus status = Resp::parse_command(sv, scratch_args_, consumed, scratch_unescape_buf_);
             if (status == ParseStatus::Success) {
                 conn.read_offset += consumed;
-                command_handler_.dispatch(scratch_args_, scratch_out_batch_, conn.authenticated, password_, conn.should_close, conn.client);
+                dispatch_connection_command(conn, scratch_args_, scratch_out_batch_);
                 if (conn.should_close) {
                     break;
                 }

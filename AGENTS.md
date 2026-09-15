@@ -127,6 +127,10 @@
   - `LASTSAVE`: Returns UNIX epoch timestamp of the most recent successful snapshot save.
   - `BGREWRITEAOF`: Compacts and rewrites AOF log in background from current in-memory state without `fork()`.
 
+  - `MULTI`: Starts a transaction on the current connection; subsequent commands return `QUEUED`.
+  - `EXEC`: Executes the queued commands in FIFO order and returns a RESP array of their results.
+  - `DISCARD`: Clears the current connection's transaction queue.
+
 ### 4. Binary Snapshot Engine (`include/kvllay/snapshot.hpp`)
 - **Class**: `kvllay::SnapshotManager`
 - **Why it is better than Redis**:
@@ -270,3 +274,4 @@ When modifying or expanding `kvllay`, adhere to the following architecture patte
 - **Namespace**: All core types are inside `namespace kvllay`.
 - **Thread Safety**: Storage modifications MUST synchronize via `mutex_` in `Store`. Handlers and network layers must not bypass the storage mutex.
 - **Protocol Precision**: All responses must strictly adhere to the Redis RESP2 format (`\r\n` line endings, valid integer formats, null representation).
+- **Transaction State**: Transaction queues are connection-local and must never be stored in the shared `CommandHandler`; ordinary pipelining outside `MULTI` must continue to preserve FIFO response order.

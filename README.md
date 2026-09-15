@@ -47,6 +47,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - `BGREWRITEAOF` (background AOF compaction without `fork()`)
   - `ECHO message`
   - `COMMAND` / `COMMAND DOCS` (redis-cli handshake)
+  - `MULTI` / `EXEC` / `DISCARD` (per-connection transactions)
   - `HELLO 2|3` (RESP2/RESP3 handshake, including optional `AUTH` and `SETNAME`)
   - `INFO` (includes `# Persistence`)
   - `QUIT`
@@ -56,6 +57,7 @@ Compatible with standard `redis-cli` and official client SDK libraries for any p
   - **Append-Only Log (`kvllay.aof`)**: Asynchronous double-buffered logger with configurable fsync (`always`, `everysec`, `no`), decoupling client request latency from disk I/O.
 - **Atomic Counters & Rate Limiting**: thread-safe counters with overflow checks for high-throughput rate limiters.
 - **Non-blocking Multi-Reactor Network Engine**: Event-driven architecture (`epoll` on Linux with `eventfd` notification, `WSAPoll` on Windows) with a fixed-size worker pool (`--threads` / `--io-threads`), scaling to 50,000+ concurrent connections with sub-millisecond latencies and zero thread churn.
+- **Transactions & Pipelining**: `MULTI` queues commands with `QUEUED`, `EXEC` executes them in FIFO order and returns a RESP array, and `DISCARD` clears the per-connection queue. Ordinary pipelined commands retain their request order.
 - **Thread Safety & Lock Striping**: 32-way sharded store with 64-byte alignment (`alignas(64)`) to eliminate false sharing, allowing concurrent writes and reads across worker threads without lock contention.
 - **Memory Manager Optimization & High-Performance Allocators**:
   - Pluggable allocators (`jemalloc` / `mimalloc` / `libc`) to eliminate heap fragmentation under intense key updates.

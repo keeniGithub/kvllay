@@ -1288,6 +1288,27 @@ def test_event_loop_and_high_concurrency(port=6389):
         
     print("[PASS] All Event Loop & High Concurrency tests passed successfully!")
 
+def test_transactions_and_pipelines(port=6389):
+    print(f"\n--- Testing Transactions & Pipelines on port {port} ---")
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(("127.0.0.1", port))
+
+    res = send_recv(s, "MULTI\r\nSET transaction_key value\r\nGET transaction_key\r\nEXEC\r\n")
+    expected = "+OK\r\n+QUEUED\r\n+QUEUED\r\n*2\r\n+OK\r\n$5\r\nvalue\r\n"
+    assert res == expected, f"MULTI/EXEC failed: {res!r}"
+
+    res = send_recv(s, "MULTI\r\nSET discarded value\r\nDISCARD\r\nGET discarded\r\n")
+    expected = "+OK\r\n+QUEUED\r\n+OK\r\n$-1\r\n"
+    assert res == expected, f"DISCARD failed: {res!r}"
+
+    res = send_recv(s, "SET pipeline_one 1\r\nGET pipeline_one\r\n")
+    assert res == "+OK\r\n$1\r\n1\r\n", f"ordinary pipeline failed: {res!r}"
+
+    assert send_recv(s, "EXEC\r\n") == "-ERR EXEC without MULTI\r\n"
+    assert send_recv(s, "DISCARD\r\n") == "-ERR DISCARD without MULTI\r\n"
+    s.close()
+    print("[PASS] MULTI/EXEC/DISCARD and ordinary pipelining")
+
 def test_allocator_and_memory_optimization(port=6389):
     print(f"\n--- Testing Memory Manager & Allocator Optimization (Port {port}) ---")
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -1370,6 +1391,6 @@ if __name__ == "__main__":
     test_lists_and_queues(test_port)
     test_maxmemory_and_eviction(test_port)
     test_persistence(test_port)
+    test_transactions_and_pipelines(test_port)
     test_event_loop_and_high_concurrency(test_port)
     test_allocator_and_memory_optimization(test_port)
-
